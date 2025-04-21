@@ -22,9 +22,11 @@ export default {
       // Сцена
       const scene = new THREE.Scene();
 
+      const spaceTexture = new THREE.TextureLoader().load('/space.jpg');
+      scene.background = spaceTexture;
       // Камера
       const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
-      camera.position.z = 0;
+      camera.position.z = 1000;
 
       // Рендерер
       const renderer = new THREE.WebGLRenderer();
@@ -36,7 +38,7 @@ export default {
       pointLight.position.set(2, 4, 4); // Positioning the point light
       scene.add(pointLight);
 
-      renderer.setClearColor(0xffffff, 0.6); // Установите белый цвет фона
+      // renderer.setClearColor(0xffffff, 0.6); // Установите белый цвет фона
 
 
       const ambientLight = new THREE.AmbientLight(0xffffff, 10); // Белый свет с интенсивностью 0.5
@@ -62,13 +64,13 @@ export default {
       // Загрузка OBJ модели
 
       const mtlLoader = new MTLLoader();
-      mtlLoader.load('/untitled.mtl', (materials) => {
+      mtlLoader.load('/planet_v4_pract.mtl', (materials) => {
         materials.preload();
         
         // Загрузка OBJ файла
         const objLoader = new OBJLoader();
         objLoader.setMaterials(materials);
-        objLoader.load('/untitled.obj', (object) => {
+        objLoader.load('/planet_v4_pract.obj', (object) => {
           scene.add(object);
         }, undefined, (error) => {
           console.error(error);
@@ -78,8 +80,8 @@ export default {
       // Добавляем OrbitControls
       const controls = new OrbitControls(camera, renderer.domElement);
       controls.enableZoom = true; // Включаем зум
-      controls.minDistance = 2; // Минимальное расстояние для зума
-      controls.maxDistance = 300; // Максимальное расстояние для зума
+      controls.minDistance = 1; // Минимальное расстояние для зума
+      controls.maxDistance = 10; // Максимальное расстояние для зума
 
       // Анимация
       const animate = () => {
@@ -89,6 +91,7 @@ export default {
         composer.render();
       };
       animate();
+      
 
       // Обработка изменения размера окна
       window.addEventListener('resize', () => {

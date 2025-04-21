@@ -2,6 +2,7 @@ import { createRouter, createWebHistory } from 'vue-router';
 import ItemList from '../components/ItemList.vue';
 import ItemCreate from '../components/ItemCreate.vue';
 import PlanetComponent from '../components/PlanetComponent.vue';
+import PlanetComponentV1 from '../components/PlanetComponentV1.vue';
 
 const routes = [
   {
@@ -18,6 +19,11 @@ const routes = [
     path: '/planet',
     name: 'Planet',
     component: PlanetComponent
+  },
+  {
+    path: '/planetV1',
+    name: 'PlanetV1',
+    component: PlanetComponentV1
   }
 ];
 
