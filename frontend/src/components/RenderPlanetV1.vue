@@ -31,8 +31,14 @@ export default {
       // Загружаем данные из JSON
       const coordinates = await this.loadGeoJSON('/ALLHIGH.geojson');
 
-      // Создаем линии на основе координат
       this.addLinesFromCoordinates(scene, coordinates, radius); // Передаем радиус
+
+      // Создаем меши для стран
+      this.addCountriesFromCoordinates(scene, coordinates, radius); // Добавляем этот вызов
+
+      // Пример вызова функции
+      const allMeshes = this.getAllMeshes(scene);
+      console.log(allMeshes); // Выводим список всех мешей в консоль
 
       // Устанавливаем позицию камеры
       camera.position.z = 5; // Увеличиваем расстояние до камеры, чтобы сфера была видна
@@ -48,6 +54,7 @@ export default {
       const mouse = new THREE.Vector2();
 
       // Анимация
+      // Анимация
       const animate = () => {
         requestAnimationFrame(animate);
         controls.update(); // Обновляем контролы
@@ -59,18 +66,20 @@ export default {
         raycaster.setFromCamera(mouse, camera);
 
         // Проверяем пересечения с линиями
-        const intersects = raycaster.intersectObjects(scene.children, true);
-        scene.children.forEach(line => {
-          if (line instanceof THREE.Line) {
-            line.material.color.set(0x000000); // Сбрасываем цвет
-          }
-        });
+        // const intersects = raycaster.intersectObjects(scene.children, true);
+        // Убираем выделение линий
+        // scene.children.forEach(line => {
+        //   if (line instanceof THREE.Line) {
+        //     line.material.color.set(0x000000); // Сбрасываем цвет
+        //   }
+        // });
 
-        intersects.forEach(intersect => {
-          if (intersect.object instanceof THREE.Line) {
-            intersect.object.material.color.set(0xff0000); // Меняем цвет на красный
-          }
-        });
+        // Убираем изменение цвета при наведении
+        // intersects.forEach(intersect => {
+        //   if (intersect.object instanceof THREE.Line) {
+        //     intersect.object.material.color.set(0xff0000); // Меняем цвет на красный
+        //   }
+        // });
 
         renderer.render(scene, camera);
       };
@@ -98,7 +107,7 @@ export default {
       data.features.forEach(feature => {
         if (feature.geometry.type === 'Polygon') {
           coordinates.push(feature.geometry.coordinates[0]); // Добавляем только первый полигон
-        } else if ( feature.geometry.type === 'MultiPolygon') {
+        } else if (feature.geometry.type === 'MultiPolygon') {
           feature.geometry.coordinates.forEach(polygon => {
             coordinates.push(polygon[0]); // Добавляем первый полигон из каждого MultiPolygon
           });
@@ -124,6 +133,39 @@ export default {
         const line = new THREE.Line(geometry, lineMaterial);
         scene.add(line);
       });
+    },
+    addCountriesFromCoordinates(scene, coordinates, radius) {
+      const countriesGroup = new THREE.Group(); // Создаем группу для стран
+      scene.add(countriesGroup); // Добавляем группу в сцену
+
+      coordinates.forEach((polygonCoords) => {
+        const points = polygonCoords.map(coord => {
+          const longitude = coord[0] * (Math.PI / 180);
+          const latitude = coord[1] * (Math.PI / 180);
+          const x = radius * Math.cos(latitude) * Math.sin(longitude);
+          const y = radius * Math.sin(latitude);
+          const z = radius * Math.cos(latitude) * Math.cos(longitude);
+          return new THREE.Vector3(x, y, z);
+        });
+
+        // Создаем меш для страны
+        const countryGeometry = new THREE.BufferGeometry().setFromPoints(points);
+        const countryMaterial = new THREE.MeshBasicMaterial({ color: 0x00ff00, side: THREE.DoubleSide });
+        const countryMesh = new THREE.Mesh(countryGeometry, countryMaterial);
+
+        countriesGroup.add(countryMesh); // Добавляем меш страны в группу
+      });
+    },
+    getAllMeshes(scene) {
+      const meshes = []; // Массив для хранения всех мешей
+
+      scene.traverse((object) => {
+        if (object instanceof THREE.Mesh) {
+          meshes.push(object); // Добавляем меш в массив
+        }
+      });
+
+      return meshes; // Возвращаем массив мешей
     }
   }
 };
