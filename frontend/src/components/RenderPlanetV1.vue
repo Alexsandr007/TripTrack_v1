@@ -41,7 +41,7 @@ export default {
       console.log(allMeshes); // Выводим список всех мешей в консоль
 
       // Устанавливаем позицию камеры
-      camera.position.z = 5; // Увеличиваем расстояние до камеры, чтобы сфера была видна
+      camera.position.z = 10; // Увеличиваем расстояние до камеры, чтобы сфера была видна
 
       // Добавляем OrbitControls для управления вращением
       const controls = new OrbitControls(camera, renderer.domElement);
@@ -101,59 +101,189 @@ export default {
     async loadGeoJSON(url) {
       const response = await fetch(url);
       const data = await response.json();
-      const coordinates = [];
+      const coordinates = {};
 
       // Извлекаем координаты из GeoJSON
       data.features.forEach(feature => {
+        const name = feature.properties.name; // Получаем имя из свойств
         if (feature.geometry.type === 'Polygon') {
-          coordinates.push(feature.geometry.coordinates[0]); // Добавляем только первый полигон
+          // Если полигон, добавляем его в массив
+          coordinates[name] = coordinates[name] || []; // Инициализируем массив, если он не существует
+          coordinates[name].push(feature.geometry.coordinates[0]); // Добавляем полигон в массив
         } else if (feature.geometry.type === 'MultiPolygon') {
+          // Если мультиполигон, добавляем все полигоны в массив
+          coordinates[name] = coordinates[name] || []; // Инициализируем массив, если он не существует
           feature.geometry.coordinates.forEach(polygon => {
-            coordinates.push(polygon[0]); // Добавляем первый полигон из каждого MultiPolygon
+            coordinates[name].push(polygon[0]); // Добавляем первый полигон из каждого MultiPolygon в массив
           });
         }
       });
 
+      console.log(coordinates);
       return coordinates;
     },
     addLinesFromCoordinates(scene, coordinates, radius) {
       const lineMaterial = new THREE.LineBasicMaterial({ color: 0x000000 });
 
-      coordinates.forEach((polygonCoords) => {
-        const points = polygonCoords.map(coord => {
-          const longitude = coord[0] * (Math.PI / 180);
-          const latitude = coord[1] * (Math.PI / 180);
-          const x = radius * Math.cos(latitude) * Math.sin(longitude);
-          const y = radius * Math.sin(latitude);
-          const z = radius * Math.cos(latitude) * Math.cos(longitude);
-          return new THREE.Vector3(x, y, z);
-        });
+      // Проходим по каждому имени в coordinates
+      Object.values(coordinates).forEach(polygons => {
+        // Проверяем, является ли polygons массивом
+        if (Array.isArray(polygons)) {
+          polygons.forEach(polygonCoords => {
 
-        const geometry = new THREE.BufferGeometry().setFromPoints(points);
-        const line = new THREE.Line(geometry, lineMaterial);
-        scene.add(line);
+            // Проверяем, является ли polygonCoords массивом массивов
+            if (Array.isArray(polygonCoords[0])) {
+              // Если это массив массивов, проходим по каждому полигону
+
+              const points = polygonCoords.map(coords => {
+
+                const longitude = coords[0] * (Math.PI / 180);
+                const latitude = coords[1] * (Math.PI / 180);
+
+                // Проверка на NaN
+                if (isNaN(longitude) || isNaN(latitude)) {
+                  console.log("TOP");
+                  console.error('NaN found in coordinates:', { longitude, latitude });
+                }
+
+                const x = radius * Math.cos(latitude) * Math.sin(longitude);
+                const y = radius * Math.sin(latitude);
+                const z = radius * Math.cos(latitude) * Math.cos(longitude);
+
+                // Проверка на NaN после вычисления
+                if (isNaN(x) || isNaN(y) || isNaN(z)) {
+                  console.error('NaN found in computed coordinates:', { x, y, z });
+                }
+
+                return new THREE.Vector3(x, y, z);
+              });
+
+              // Проверка на пустой массив points
+              if (points.length > 0) {
+                // Создаем линию для каждого полигона
+                const geometry = new THREE.BufferGeometry().setFromPoints(points);
+                const line = new THREE.Line(geometry, lineMaterial);
+                scene.add(line);
+              } else {
+                console.error('Points array is empty for polygon:', coords);
+              }
+            } else {
+              console.error('coords is not a valid array or is empty:', coords);
+            }
+          });
+        } else {
+          // Если это просто массив, обрабатываем его как обычно
+          if (Array.isArray(polygons) && polygons.length > 0) {
+            const points = polygons.map(coord => {
+              const longitude = coord[0] * (Math.PI / 180);
+              const latitude = coord[1] * (Math.PI / 180);
+
+              // Проверка на NaN
+              if (isNaN(longitude) || isNaN(latitude)) {
+                console.log("BOTTOM");
+                console.error('NaN found in coordinates:', { longitude, latitude });
+              }
+
+              const x = radius * Math.cos(latitude) * Math.sin(longitude);
+              const y = radius * Math.sin(latitude);
+              const z = radius * Math.cos(latitude) * Math.cos(longitude);
+
+              // Проверка на NaN после вычисления
+              if (isNaN(x) || isNaN(y) || isNaN(z)) {
+                console.error('NaN found in computed coordinates:', { x, y, z });
+              }
+
+              return new THREE.Vector3(x, y, z);
+            });
+
+            // Проверка на пустой массив points
+            if (points.length > 0) {
+              // Создаем линию для каждого полигона
+              const geometry = new THREE.BufferGeometry().setFromPoints(points);
+              const line = new THREE.Line(geometry, lineMaterial);
+              scene.add(line);
+            } else {
+              console.error('Points array is empty for polygon:', polygons);
+            }
+          } else {
+            console.error('polygonCoords is not a valid array or is empty:', polygons);
+          }
+        }
       });
     },
-    addCountriesFromCoordinates(scene, coordinates, radius) {
+    addCountriesFromCoordinates(scene, coordinates, radius, thickness = 0.1) {
       const countriesGroup = new THREE.Group(); // Создаем группу для стран
       scene.add(countriesGroup); // Добавляем группу в сцену
 
-      coordinates.forEach((polygonCoords) => {
-        const points = polygonCoords.map(coord => {
-          const longitude = coord[0] * (Math.PI / 180);
-          const latitude = coord[1] * (Math.PI / 180);
-          const x = radius * Math.cos(latitude) * Math.sin(longitude);
-          const y = radius * Math.sin(latitude);
-          const z = radius * Math.cos(latitude) * Math.cos(longitude);
-          return new THREE.Vector3(x, y, z);
-        });
+      // Проходим по каждому имени в coordinates
+      Object.entries(coordinates).forEach(([name, polygons]) => {
+        // Проверяем, является ли polygons массивом
+        if (Array.isArray(polygons)) {
+          polygons.forEach((polygonCoords, index) => {
+            // Проверяем, является ли polygonCoords массивом массивов
+            if (Array.isArray(polygonCoords[0])) {
+              const topPoints = [];
+              const bottomPoints = [];
 
-        // Создаем меш для страны
-        const countryGeometry = new THREE.BufferGeometry().setFromPoints(points);
-        const countryMaterial = new THREE.MeshBasicMaterial({ color: 0x00ff00, side: THREE.DoubleSide });
-        const countryMesh = new THREE.Mesh(countryGeometry, countryMaterial);
+              // Создаем точки для верхней и нижней поверхности
+              polygonCoords.forEach(coord => {
+                const longitude = coord[0] * (Math.PI / 180);
+                const latitude = coord[1] * (Math.PI / 180);
+                const x = radius * Math.cos(latitude) * Math.sin(longitude);
+                const y = radius * Math.sin(latitude);
+                const z = radius * Math.cos(latitude) * Math.cos(longitude);
 
-        countriesGroup.add(countryMesh); // Добавляем меш страны в группу
+                // Добавляем верхнюю точку
+                topPoints.push(new THREE.Vector3(x, y, z));
+
+                // Добавляем нижнюю точку, смещенную от центра сферы
+                const bottomX = (radius + thickness) * Math.cos(latitude) * Math.sin(longitude);
+                const bottomY = (radius + thickness) * Math.sin(latitude);
+                const bottomZ = (radius + thickness) * Math.cos(latitude) * Math.cos(longitude);
+                bottomPoints.push(new THREE.Vector3(bottomX, bottomY, bottomZ));
+              });
+
+              // Создаем геометрию для верхней и нижней поверхности
+              const geometry = new THREE.BufferGeometry();
+              const vertices = [];
+
+              // Добавляем верхние и нижние точки
+              topPoints.forEach((point, i) => {
+                vertices.push(point.x, point.y, point.z); // Верхняя точка
+                vertices.push(bottomPoints[i].x, bottomPoints[i].y, bottomPoints[i].z); // Нижняя точка
+              });
+
+              // Создаем индексы для треугольников
+              const indices = [];
+              for (let i = 0; i < topPoints.length - 1; i++) {
+                const topIndex = i * 2;
+                const bottomIndex = topIndex + 1;
+
+                // Создаем два треугольника для каждой пары точек
+                indices.push(topIndex, bottomIndex, topIndex + 2); // Первый треугольник
+                indices.push(bottomIndex, bottomIndex + 2, topIndex + 2); // Второй треугольник
+              }
+
+              // Добавляем вершины и индексы в геометрию
+              geometry.setAttribute('position', new THREE.Float32BufferAttribute(vertices, 3));
+              geometry.setIndex(indices);
+              geometry.computeVertexNormals(); // Вычисляем нормали для освещения
+
+              const countryMaterial = new THREE.MeshBasicMaterial({ color: 0x00ff00, side: THREE.DoubleSide });
+              const countryMesh = new THREE.Mesh(geometry, countryMaterial);
+
+              // Добавляем имя к мешу
+              countryMesh.name = `${name}_polygon_${index}`;
+
+              countriesGroup.add(countryMesh); // Добавляем меш страны в группу
+            } else {
+              console.error('polygonCoords is not an array of arrays:', polygonCoords);
+            }
+          });
+          console.log(countriesGroup);
+        } else {
+          console.error('polygons is not an array:', polygons);
+        }
       });
     },
     getAllMeshes(scene) {
@@ -166,6 +296,7 @@ export default {
       });
 
       return meshes; // Возвращаем массив мешей
+
     }
   }
 };
