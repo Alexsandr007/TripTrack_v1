@@ -165,10 +165,10 @@ export default {
                 const line = new THREE.Line(geometry, lineMaterial);
                 scene.add(line);
               } else {
-                console.error('Points array is empty for polygon:', coords);
+                // console.error('Points array is empty for polygon:', coords);
               }
             } else {
-              console.error('coords is not a valid array or is empty:', coords);
+              // console.error('coords is not a valid array or is empty:', coords);
             }
           });
         } else {
