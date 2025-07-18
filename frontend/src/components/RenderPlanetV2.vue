@@ -1,9 +1,5 @@
 <template>
   <div ref="container" class="earth-container">
-    <div v-if="loading" class="preloader">
-      <div class="preloader-bar" :style="{ width: loadingProgress + '%' }"></div>
-      <div class="preloader-text">Загрузка: {{ loadingProgress }}%</div>
-    </div>
     <div class="performance-panel" v-if="showPerformance">
       <div>FPS: {{ fps }}</div>
       <div>Memory: {{ memoryUsage }} MB</div>
@@ -26,8 +22,6 @@ export default {
   name: 'EarthViewer',
   setup() {
     const container = ref(null);
-    const loading = ref(true);
-    const loadingProgress = ref(0);
     const shouldRotate = ref(true);
     const showPerformance = ref(false);
     const fps = ref(0);
@@ -35,6 +29,7 @@ export default {
     const triangleCount = ref(0);
     const objectCount = ref(0);
     const gpuInfo = ref('N/A');
+    let socket = null;
     
     let scene, camera, renderer, earthMesh, controls;
     let raycaster, mouse;
@@ -127,7 +122,7 @@ export default {
       const radius = 1.0;
       const position = latLngToVector3(city.lat, city.lng, radius);
       
-      const geometry = new THREE.CircleGeometry(0.02, 32);
+      const geometry = new THREE.CircleGeometry(0.02, 16);
       const material = new THREE.MeshBasicMaterial({ 
         color: 0xffffff,
         transparent: true,
@@ -265,7 +260,7 @@ export default {
         1000
       );
       camera.position.z = 2;
-      
+
       renderer = new THREE.WebGLRenderer({ 
         antialias: true,
         powerPreference: "high-performance"
@@ -285,22 +280,16 @@ export default {
       });
       resizeObserver.observe(container.value);
 
-      const geometry = new THREE.SphereGeometry(1, 16, 16);
+      const geometry = new THREE.SphereGeometry(1, 64, 64);
 
       const manager = new THREE.LoadingManager();
       
-      manager.onStart = () => {
-        loadingProgress.value = 0;
-      };
       
-      manager.onProgress = (url, itemsLoaded, itemsTotal) => {
-        loadingProgress.value = Math.round((itemsLoaded / itemsTotal) * 100);
-      };
       
-      manager.onLoad = () => {
-        loading.value = false;
+       manager.onLoad = () => {
         addCitiesToScene();
-        animate();
+        animate(); // Сразу запускаем рендеринг
+        
       };
 
       const textureLoader = new THREE.TextureLoader(manager);
@@ -316,7 +305,7 @@ export default {
         );
       };
 
-      const earthTexture = loadTexture('/5_26KHeightLow.jpg');
+      const earthTexture = loadTexture('/5_26KHeight.webp');
       
       const material = new THREE.MeshBasicMaterial({
         map: earthTexture
@@ -343,7 +332,7 @@ export default {
       });
 
       const starVertices = [];
-      for (let i = 0; i < 5000; i++) {
+      for (let i = 0; i < 10000; i++) {
         const x = (Math.random() - 0.5) * 2000;
         const y = (Math.random() - 0.5) * 2000;
         const z = (Math.random() - 0.5) * 2000;
@@ -361,25 +350,33 @@ export default {
       renderer.info.autoReset = false;
     };
 
-    const animate = (timestamp) => {
-      animationFrameId = requestAnimationFrame(animate);
-      
-      const deltaTime = timestamp - lastFrameTime;
-      if (deltaTime < frameInterval) return;
-      
-      lastFrameTime = timestamp - (deltaTime % frameInterval);
-      
+    const updateScene = () => {
       if (earthMesh && shouldRotate.value) {
         earthMesh.rotation.y += 0.001;
       }
-      
       updateMarkerScales();
-      
       if (controls) controls.update();
-      if (renderer && scene && camera) renderer.render(scene, camera);
+    };
+
+    const animate = () => {
+      if (!renderer || !scene || !camera) return;
       
+      animationFrameId = requestAnimationFrame(animate);
+      
+      // Пропускаем кадры если страница не видима
+      if (document.hidden) return;
+      
+      // Оптимизированный FPS контроль
+      const now = performance.now();
+      const delta = now - lastFrameTime;
+      if (delta < frameInterval) return;
+      lastFrameTime = now - (delta % frameInterval);
+      
+      // Обновление сцены
+      updateScene();
+      
+      renderer.render(scene, camera);
       updatePerformanceMetrics();
-      renderer.info.reset();
     };
 
     onMounted(() => {
@@ -400,12 +397,14 @@ export default {
       if (resizeObserver) {
         resizeObserver.disconnect();
       }
+
+      if (socket) {
+        socket.close();
+      }
     });
 
     return {
       container,
-      loading,
-      loadingProgress,
       showPerformance,
       fps,
       memoryUsage,
@@ -424,34 +423,6 @@ export default {
   height: 100vh;
   position: relative;
   overflow: hidden;
-}
-
-.preloader {
-  position: absolute;
-  top: 50%;
-  left: 50%;
-  transform: translate(-50%, -50%);
-  width: 80%;
-  max-width: 400px;
-  background: rgba(0, 0, 0, 0.7);
-  padding: 20px;
-  border-radius: 10px;
-  color: white;
-  text-align: center;
-  z-index: 100;
-}
-
-.preloader-bar {
-  height: 10px;
-  background: #4CAF50;
-  border-radius: 5px;
-  margin-bottom: 10px;
-  transition: width 0.3s ease;
-}
-
-.preloader-text {
-  font-family: Arial, sans-serif;
-  font-size: 16px;
 }
 
 .performance-panel {
