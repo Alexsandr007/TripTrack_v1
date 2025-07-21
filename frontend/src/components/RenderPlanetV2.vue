@@ -1,35 +1,44 @@
 <template>
-  <div ref="container" class="earth-container">
-    <div class="city-card" 
-     v-if="selectedCity"
-     @mouseleave="shouldRotate = true">
-  <div class="city-image">
-      <img :src="selectedCity.image" :alt="selectedCity.name">
+  <div>
+    <!-- Прелоадер -->
+    <div v-if="isLoading" class="preloader-overlay">
+      <div class="preloader-content">
+        <div class="preloader-spinner"></div>
+        <div class="preloader-text">Загрузка земного шара...</div>
+      </div>
     </div>
-    <div class="city-info">
-      <h3>{{ selectedCity.name }}</h3>
-      <p><strong>Широта:</strong> {{ selectedCity.lat }}</p>
-      <p><strong>Долгота:</strong> {{ selectedCity.lng }}</p>
-      <p class="city-description">{{ selectedCity.description }}</p>
+    <div ref="container" class="earth-container" v-show="!isLoading">
+      <div class="city-card" 
+      v-if="selectedCity"
+      @mouseleave="shouldRotate = true">
+    <div class="city-image">
+        <img :src="selectedCity.image" :alt="selectedCity.name">
+      </div>
+      <div class="city-info">
+        <h3>{{ selectedCity.name }}</h3>
+        <p><strong>Широта:</strong> {{ selectedCity.lat }}</p>
+        <p><strong>Долгота:</strong> {{ selectedCity.lng }}</p>
+        <p class="city-description">{{ selectedCity.description }}</p>
+        
+        <!-- Добавленная кнопка -->
+        <button class="visit-button" @click="visitCityPage(selectedCity)">
+          Перейти на страницу
+        </button>
+      </div>
+      <button class="close-card" @click="selectedCity = null">×</button>
+    </div>
       
-      <!-- Добавленная кнопка -->
-      <button class="visit-button" @click="visitCityPage(selectedCity)">
-        Перейти на страницу
+      <div class="performance-panel" v-if="showPerformance">
+        <div>FPS: {{ fps }}</div>
+        <div>Memory: {{ memoryUsage }} MB</div>
+        <div>Triangles: {{ triangleCount }}</div>
+        <div>Objects: {{ objectCount }}</div>
+        <div>GPU: {{ gpuInfo }}</div>
+      </div>
+      <button class="toggle-performance" @click="togglePerformance">
+        {{ showPerformance ? 'Hide Stats' : 'Show Stats' }}
       </button>
     </div>
-    <button class="close-card" @click="selectedCity = null">×</button>
-  </div>
-    
-    <div class="performance-panel" v-if="showPerformance">
-      <div>FPS: {{ fps }}</div>
-      <div>Memory: {{ memoryUsage }} MB</div>
-      <div>Triangles: {{ triangleCount }}</div>
-      <div>Objects: {{ objectCount }}</div>
-      <div>GPU: {{ gpuInfo }}</div>
-    </div>
-    <button class="toggle-performance" @click="togglePerformance">
-      {{ showPerformance ? 'Hide Stats' : 'Show Stats' }}
-    </button>
   </div>
 </template>
 
@@ -51,6 +60,7 @@ export default {
     const triangleCount = ref(0);
     const objectCount = ref(0);
     const gpuInfo = ref('N/A');
+    const isLoading = ref(true);
     
     let scene, camera, renderer, earthMesh, controls;
     let raycaster, mouse;
@@ -390,11 +400,6 @@ export default {
       const geometry = new THREE.SphereGeometry(1, 64, 64);
 
       const manager = new THREE.LoadingManager();
-      
-      manager.onLoad = () => {
-        addCitiesToScene();
-        animate(); // Сразу запускаем рендеринг
-      };
 
       const textureLoader = new THREE.TextureLoader(manager);
 
@@ -417,6 +422,13 @@ export default {
 
       earthMesh = new THREE.Mesh(geometry, material);
       scene.add(earthMesh);
+
+      
+      manager.onLoad = () => {
+        addCitiesToScene();
+        isLoading.value = false; // Скрываем прелоадер когда загрузка завершена
+        animate();
+      };
 
       controls = new OrbitControls(camera, renderer.domElement);
       controls.enableDamping = true;
@@ -509,13 +521,53 @@ return {
       gpuInfo,
       togglePerformance,
       rotateToCity,
-      closeCityCard
+      closeCityCard,
+      isLoading
     };
   }
 };
 </script>
 
 <style scoped>
+/* Стили прелоадера */
+.preloader-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  background: rgba(0, 0, 0, 0.8);
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  z-index: 9999;
+}
+
+.preloader-content {
+  text-align: center;
+  color: white;
+}
+
+.preloader-spinner {
+  width: 50px;
+  height: 50px;
+  border: 5px solid rgba(255, 255, 255, 0.3);
+  border-radius: 50%;
+  border-top-color: #6a0dad;
+  animation: spin 1s ease-in-out infinite;
+  margin: 0 auto 20px;
+}
+
+.preloader-text {
+  font-size: 1.2em;
+  margin-top: 15px;
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
 .earth-container {
   width: 100%;
   height: 100vh;
