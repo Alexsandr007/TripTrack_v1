@@ -1,42 +1,17 @@
 import { createRouter, createWebHistory } from 'vue-router';
-import ItemList from '../components/ItemList.vue';
-import ItemCreate from '../components/ItemCreate.vue';
-import PlanetComponent from '../components/PlanetComponent.vue';
-import PlanetComponentV2 from '../components/PlanetComponentV2.vue';
-import PlanetComponentV1 from '../components/PlanetComponentV1.vue';
-import TownComponent from '../components/TownComponent.vue';
+import baseHomeComponent from '../components/home/baseHomeComponent.vue'
+import RegisterComponent from '../components/home/auth/RegisterComponent.vue'; // Убедитесь, что файл называется RegisterComponent.vue
+import Login from '../components/home/auth/LoginComponent.vue'
+import Recovery from '../components/home/auth/RecoveryComponent.vue'
+import Profile from '../components/profile/profileComponent.vue'
 
 const routes = [
-  {
-    path: '/',
-    name: 'ItemList',
-    component: ItemList
-  },
-  {
-    path: '/create',
-    name: 'ItemCreate',
-    component: ItemCreate
-  },
-  {
-    path: '/planet',
-    name: 'Planet',
-    component: PlanetComponent
-  },
-  {
-    path: '/planetV1',
-    name: 'PlanetV1',
-    component: PlanetComponentV1
-  },
-  {
-    path: '/planetV2',
-    name: 'PlanetV2',
-    component: PlanetComponentV2
-  },
-  {
-    path: '/town',
-    name: 'Town',
-    component: TownComponent
-  }
+  { path: '/', name: 'Home', component: baseHomeComponent },
+  { path: '/login', name: 'Login', component: Login },
+  { path: '/register', name: 'Register', component: RegisterComponent },
+  { path: '/recovery', name: 'Recovery', component: Recovery },
+  { path: '/profile', name: 'Profile', component: Profile }
+  
 ];
 
 const router = createRouter({

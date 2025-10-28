@@ -19,6 +19,7 @@
     "three": "^0.174.0",
     "three-globe": "^2.42.4",
     "three-obj-mtl-loader": "^1.0.3",
+    "vanilla-tilt": "^1.8.1",
     "vue": "^3.5.17",
     "vue-loader": "^17.4.2",
     "vue-router": "^4.5.0"

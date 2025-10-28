@@ -1,12 +1,5 @@
 <template>
   <div>
-    <!-- Прелоадер -->
-    <div v-if="isLoading" class="preloader-overlay">
-      <div class="preloader-content">
-        <div class="preloader-spinner"></div>
-        <div class="preloader-text">Загрузка земного шара...</div>
-      </div>
-    </div>
     <div ref="container" class="earth-container" v-show="!isLoading">
       <div class="city-card" 
       v-if="selectedCity"
@@ -35,9 +28,9 @@
         <div>Objects: {{ objectCount }}</div>
         <div>GPU: {{ gpuInfo }}</div>
       </div>
-      <button class="toggle-performance" @click="togglePerformance">
+      <!-- <button class="toggle-performance" @click="togglePerformance">
         {{ showPerformance ? 'Hide Stats' : 'Show Stats' }}
-      </button>
+      </button> -->
     </div>
   </div>
 </template>
@@ -46,6 +39,7 @@
 import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import { onMounted, onUnmounted, ref } from 'vue';
+import { cityData } from '../../../data/cities.js'; // или импортируйте ваши данные о городах
 
 export default {
   name: 'EarthViewer',
@@ -61,6 +55,7 @@ export default {
     const objectCount = ref(0);
     const gpuInfo = ref('N/A');
     const isLoading = ref(true);
+    const fillProgress = ref(0);
     
     let scene, camera, renderer, earthMesh, controls;
     let raycaster, mouse;
@@ -76,44 +71,6 @@ export default {
     const targetFPS = 60;
     const frameInterval = 1000 / targetFPS;
     let rotationAnimationId = null;
-
-    const cityData = [
-      { 
-        name: "Москва", 
-        lat: 37.3558, 
-        lng: 20.6173,
-        image: "/moscow.jpg",
-        description: "Столица России, крупнейший город страны с богатой историей и культурой."
-      },
-      { 
-        name: "Нью-Йорк", 
-        lat: 22.3128, 
-        lng: -91.0060,
-        image: "/new-york.jpg",
-        description: "Крупнейший город США, известный своими небоскребами и Статуей Свободы."
-      },
-      { 
-        name: "Токио", 
-        lat: 17.1762, 
-        lng: 122.6503,
-        image: "/tokyo.jpg",
-        description: "Столица Японии, современный мегаполис с уникальным сочетанием традиций и технологий."
-      },
-      { 
-        name: "Лондон", 
-        lat: 33.0074, 
-        lng: -17.1278,
-        image: "/london.jpg",
-        description: "Столица Великобритании, город с многовековой историей и королевскими достопримечательностями."
-      },
-      { 
-        name: "Сидней", 
-        lat: -52.3688, 
-        lng: 134.2093,
-        image: "/sydney.jpg",
-        description: "Крупнейший город Австралии, известный своим оперным театром и мостом Харбор-Бридж."
-      }
-    ];
 
     const togglePerformance = () => {
       showPerformance.value = !showPerformance.value;
@@ -184,11 +141,11 @@ export default {
       const radius = 1.0;
       const position = latLngToVector3(city.lat, city.lng, radius);
       
-      const geometry = new THREE.CircleGeometry(0.02, 16);
+      const geometry = new THREE.CircleGeometry(0.02, 32);
       const material = new THREE.MeshBasicMaterial({ 
         color: 0xffffff,
         transparent: true,
-        opacity: 0.8,
+        opacity: 1,
         side: THREE.DoubleSide
       });
       
@@ -373,16 +330,18 @@ export default {
       camera = new THREE.PerspectiveCamera(
         75,
         container.value.clientWidth / container.value.clientHeight,
-        0.1,
+        0.01,
         1000
       );
       camera.position.z = 2;
 
       renderer = new THREE.WebGLRenderer({ 
         antialias: true,
-        powerPreference: "high-performance"
       });
       renderer.setSize(container.value.clientWidth, container.value.clientHeight);
+      renderer.setClearColor(0x000000, 0); // прозрачный фон
+
+      
       container.value.appendChild(renderer.domElement);
 
       raycaster = new THREE.Raycaster();
@@ -406,7 +365,12 @@ export default {
       const loadTexture = (url) => {
         return textureLoader.load(
           url,
-          undefined,
+          (texture) => {
+            console.log('Текстура загружена:', texture);
+            // Важные настройки текстуры
+            texture.colorSpace = THREE.SRGBColorSpace;
+            texture.encoding = THREE.sRGBEncoding;
+          },
           undefined,
           (error) => {
             console.error('Ошибка загрузки текстуры:', error);
@@ -416,17 +380,39 @@ export default {
 
       const earthTexture = loadTexture('/5_26KHeight.webp');
       
-      const material = new THREE.MeshBasicMaterial({
-        map: earthTexture
+      // АЛЬТЕРНАТИВНЫЙ ВАРИАНТ 1: MeshStandardMaterial с правильными настройками
+      const material = new THREE.MeshStandardMaterial({
+        map: earthTexture,
+        side: THREE.DoubleSide,
+        metalness: 0,
+        roughness: 1,
+        toneMapped: false
       });
 
       earthMesh = new THREE.Mesh(geometry, material);
       scene.add(earthMesh);
 
+      const ambientLight = new THREE.AmbientLight(0xffffff, 3.5); // цвет, интенсивность
+      scene.add(ambientLight);
+
+      // Анимация заполнения
+      const animateFill = () => {
+        if (fillProgress.value < 100) {
+          fillProgress.value += 0.5;
+          requestAnimationFrame(animateFill);
+        }
+      };
+      
+      requestAnimationFrame(animateFill);
       
       manager.onLoad = () => {
+        console.log('Все текстуры загружены');
         addCitiesToScene();
-        isLoading.value = false; // Скрываем прелоадер когда загрузка завершена
+        fillProgress.value = 100;
+        
+        setTimeout(() => {
+          isLoading.value = false;
+        }, 500);
         animate();
       };
 
@@ -434,17 +420,15 @@ export default {
       controls.enableDamping = true;
       controls.dampingFactor = 0.01;
 
-      const ambientLight = new THREE.AmbientLight(0xffffff, 0.5);
-      scene.add(ambientLight);
-
-      const directionalLight = new THREE.DirectionalLight(0xffffff, 0.8);
-      directionalLight.position.set(1, 1, 1).normalize();
-      scene.add(directionalLight);
+      // Ключевые настройки для контроля расстояния
+      controls.minDistance = 1.3;   // Нельзя приблизиться ближе чем 1.1 единицы
+      controls.maxDistance = 5;    // Нельзя отдалиться дальше чем 15 единиц
 
       const starGeometry = new THREE.BufferGeometry();
       const starMaterial = new THREE.PointsMaterial({
-        color: 0xffffff,
-        size: 0.02
+        color: 0xFFFFFF,
+        size: 0.05,
+        toneMapped: false // Также отключаем для звезд
       });
 
       const starVertices = [];
@@ -465,7 +449,6 @@ export default {
 
       renderer.info.autoReset = false;
     };
-
 
     const animate = () => {
       if (!renderer || !scene || !camera) return;
@@ -510,7 +493,7 @@ export default {
 
     });
 
-return {
+    return {
       container,
       selectedCity,
       showPerformance,
@@ -522,73 +505,164 @@ return {
       togglePerformance,
       rotateToCity,
       closeCityCard,
-      isLoading
+      isLoading,
+      fillProgress,
     };
+  },
+  methods: {
+    visitCityPage(city) {
+      // Закрываем карточку города
+      this.selectedCity = null;
+      // Переходим на страницу города
+      this.$router.push({
+        name: 'CityPage', // имя маршрута из вашего router.js
+        params: { 
+          cityName: city.name.toLowerCase().replace(/\s+/g, '-') // преобразуем имя города в URL-формат
+        }
+      });
+    }
   }
 };
 </script>
 
 <style scoped>
-/* Стили прелоадера */
+/* Стили звездного неба (без изменений) */
 .preloader-overlay {
   position: fixed;
   top: 0;
   left: 0;
   width: 100%;
   height: 100%;
-  background: rgba(0, 0, 0, 0.8);
+  background: linear-gradient(to bottom, #0a0e24 0%, #1a1b3a 100%);
   display: flex;
   justify-content: center;
   align-items: center;
   z-index: 9999;
-}
-
-.preloader-content {
-  text-align: center;
-  color: white;
-}
-
-.preloader-spinner {
-  width: 50px;
-  height: 50px;
-  border: 5px solid rgba(255, 255, 255, 0.3);
-  border-radius: 50%;
-  border-top-color: #6a0dad;
-  animation: spin 1s ease-in-out infinite;
-  margin: 0 auto 20px;
-}
-
-.preloader-text {
-  font-size: 1.2em;
-  margin-top: 15px;
-}
-
-@keyframes spin {
-  to {
-    transform: rotate(360deg);
-  }
-}
-.earth-container {
-  width: 100%;
-  height: 100vh;
-  position: relative;
   overflow: hidden;
 }
 
-.city-card {
+.stars, .stars2, .stars3 {
   position: absolute;
-  top: 20px;
-  right: 20px;
-  width: 400px;
-  height:600px;
-  background: rgba(0, 0, 0, 0.8);
-  color: white;
-  border-radius: 10px;
-  padding: 15px;
-  box-shadow: 0 4px 8px rgba(0, 0, 0, 0.3);
-  z-index: 100;
-  animation: fadeIn 0.3s ease-in-out;
-  cursor: default;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  background: transparent;
+}
+
+.stars {
+  background-image: radial-gradient(1px 1px at 20px 30px, white, rgba(0,0,0,0));
+  background-size: 100px 100px;
+  animation: starsAnimation 50s linear infinite;
+}
+
+.stars2 {
+  background-image: radial-gradient(1px 1px at 40px 70px, white, rgba(0,0,0,0));
+  background-size: 150px 150px;
+  animation: starsAnimation 100s linear infinite;
+}
+
+.stars3 {
+  background-image: radial-gradient(1px 1px at 90px 40px, white, rgba(0,0,0,0));
+  background-size: 200px 200px;
+  animation: starsAnimation 150s linear infinite;
+}
+
+@keyframes starsAnimation {
+  from { transform: translateY(0); }
+  to { transform: translateY(-200px); }
+}
+
+/* НОВЫЕ СТИЛИ ДЛЯ АНИМАЦИИ ТЕКСТА */
+.preloader-content {
+  position: relative;
+  z-index: 10;
+}
+
+.logo-animation-container {
+  position: relative;
+  display: inline-block;
+}
+
+.logo-text-outline {
+  font-size: 5rem;
+  font-weight: 800;
+  letter-spacing: 5px;
+  color: transparent;
+  -webkit-text-stroke: 2px rgba(255, 255, 255, 0.3);
+}
+
+.logo-text-mask {
+  position: absolute;
+  top: 0;
+  left: 0;
+  height: 100%;
+  overflow: hidden;
+  transition: width 0.5s ease-out;
+  white-space: nowrap;
+}
+
+.logo-text-filled {
+  font-size: 5rem;
+  font-weight: 800;
+  letter-spacing: 5px;
+  background: linear-gradient(to right, #1a3a8f, #0a1a4a);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+}
+
+/* Анимация исчезновения */
+.preloader-overlay.fade-out {
+  animation: fadeOut 0.8s forwards;
+}
+
+@keyframes fadeOut {
+  to {
+    opacity: 0;
+    visibility: hidden;
+  }
+}
+
+/* Адаптивность */
+@media (max-width: 768px) {
+  .logo-text-outline,
+  .logo-text-filled {
+    font-size: 3rem;
+    letter-spacing: 3px;
+  }
+}
+
+.earth-container {
+  width: 100%;
+  height: 800px;
+  position: relative;
+  overflow: hidden;
+  background: linear-gradient(
+    to right, 
+    #020C2B 0%, 
+    #25438B 50%, 
+    #030516 100%
+  );
+}
+
+.city-card {
+    position: absolute;
+    top: 100px;
+    right: 20px;
+    margin-left: 20px;
+    max-width: 400px;
+    height: 600px;
+    background: rgb(130 130 130 / 23%);
+    color: #000000;
+    border-radius: 10px;
+    padding: 15px;
+    box-shadow: 0 4px 8px rgba(0, 0, 0, 0.3);
+    z-index: 100;
+    animation: fadeIn-2742af1a 0.3s 
+ease-in-out;
+    cursor: default;
+    backdrop-filter: blur(5px);
 }
 
 .city-card:hover {
@@ -616,9 +690,9 @@ return {
 }
 
 .city-info p {
-  margin: 5px 0;
-  font-size: 0.9em;
-  color: #ddd;
+    margin: 5px 0;
+    font-size: 0.9em;
+    color: #ffffff;
 }
 
 .city-description {
@@ -684,20 +758,22 @@ return {
 }
 
 .visit-button {
-  display: inline-block;
-  margin-top: 15px;
-  padding: 10px 20px;
-  background-color: #6a0dad; /* Основной фиолетовый цвет */
-  color: white;
-  border: none;
-  border-radius: 5px;
-  font-size: 0.9em;
-  cursor: pointer;
-  transition: all 0.3s ease;
-  text-transform: uppercase;
-  font-weight: 600;
-  letter-spacing: 0.5px;
-  box-shadow: 0 2px 5px rgba(0, 0, 0, 0.2);
+    display: inline-block;
+    margin-top: 15px;
+    padding: 10px 20px;
+    background-color: #011e3f;
+    background: linear-gradient(to right, #020C2B -25%, #25438B 50%, #030516 150%);
+    color: white;
+    border: none;
+    border-radius: 5px;
+    font-size: 0.9em;
+    cursor: pointer;
+    transition: all 0.3s 
+ease;
+    text-transform: uppercase;
+    font-weight: 600;
+    letter-spacing: 0.5px;
+    box-shadow: 0 2px 5px rgba(0, 0, 0, 0.2);
 }
 
 .visit-button:hover {
@@ -709,5 +785,243 @@ return {
 .visit-button:active {
   background-color: #4b0082; /* Темный индиго при нажатии */
   transform: translateY(0);
+}
+
+
+* {
+    margin: 0;
+    padding: 0;
+    box-sizing: border-box;
+    font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+}
+
+body {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    min-height: 100vh;
+    background: linear-gradient(135deg, #1a2a6c, #b21f1f, #fdbb2d);
+    padding: 20px;
+    overflow-x: hidden;
+}
+
+#app {
+    max-width: 1200px;
+    width: 100%;
+    text-align: center;
+    padding: 20px;
+}
+
+h1 {
+    color: white;
+    margin-bottom: 10px;
+    font-size: 2.5rem;
+    text-shadow: 2px 2px 4px rgba(0, 0, 0, 0.5);
+}
+
+.subtitle {
+    color: rgba(255, 255, 255, 0.8);
+    margin-bottom: 40px;
+    font-size: 1.2rem;
+}
+
+.carousel-wrapper {
+    position: relative;
+    width: 100%;
+    display: flex;
+    justify-content: center;
+    margin-bottom: 30px;
+}
+
+.carousel-container {
+    position: relative;
+    width: 100%;
+    height: 500px;
+    perspective: 1500px;
+    display: flex;
+    justify-content: center;
+    cursor: grab;
+    user-select: none;
+    overflow: hidden;
+}
+
+.carousel-container.dragging {
+    cursor: grabbing;
+}
+
+.carousel {
+    position: absolute;
+    width: 100%;
+    height: 100%;
+    transform-style: preserve-3d;
+    transition: transform 0.8s cubic-bezier(0.25, 0.46, 0.45, 0.94);
+}
+
+.carousel.dragging {
+    transition: none;
+}
+
+.carousel-item {
+    position: absolute;
+    width: 280px;
+    height: 380px;
+    border-radius: 15px;
+    overflow: hidden;
+    box-shadow: 0 15px 35px rgba(0, 0, 0, 0.5);
+    transition: transform 0.5s ease, opacity 0.5s ease, filter 0.5s ease;
+    filter: brightness(0.8);
+    left: 50%;
+    top: 50%;
+    margin-left: -140px;
+    margin-top: -190px;
+    touch-action: pan-y;
+}
+
+.carousel-item.active {
+    filter: brightness(1);
+    z-index: 10;
+}
+
+.carousel-item img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    pointer-events: none;
+}
+
+.carousel-caption {
+    position: absolute;
+    bottom: 0;
+    left: 0;
+    width: 100%;
+    background: linear-gradient(to top, rgba(0, 0, 0, 0.8), transparent);
+    color: white;
+    padding: 20px;
+    text-align: center;
+    pointer-events: none;
+}
+
+.carousel-caption h3 {
+    font-size: 1.5rem;
+    margin-bottom: 5px;
+}
+
+.carousel-caption p {
+    font-size: 1rem;
+    opacity: 0.8;
+}
+
+.drag-hint {
+    position: absolute;
+    bottom: 20px;
+    left: 50%;
+    transform: translateX(-50%);
+    color: rgba(255, 255, 255, 0.7);
+    font-size: 0.9rem;
+    background: rgba(0, 0, 0, 0.3);
+    padding: 8px 15px;
+    border-radius: 20px;
+    backdrop-filter: blur(10px);
+    animation: pulse 2s infinite;
+    z-index: 100;
+}
+
+@keyframes pulse {
+    0% { opacity: 0.7; }
+    50% { opacity: 1; }
+    100% { opacity: 0.7; }
+}
+
+.controls {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    margin-top: 30px;
+    gap: 20px;
+}
+
+.btn {
+    background: rgba(255, 255, 255, 0.2);
+    border: none;
+    color: white;
+    padding: 12px 20px;
+    border-radius: 50px;
+    cursor: pointer;
+    font-size: 1rem;
+    transition: all 0.3s ease;
+    backdrop-filter: blur(10px);
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.btn:hover {
+    background: rgba(255, 255, 255, 0.3);
+    transform: translateY(-2px);
+}
+
+.btn:active {
+    transform: translateY(1px);
+}
+
+.indicators {
+    display: flex;
+    justify-content: center;
+    gap: 10px;
+    margin-top: 20px;
+}
+
+.indicator {
+    width: 12px;
+    height: 12px;
+    border-radius: 50%;
+    background: rgba(255, 255, 255, 0.3);
+    cursor: pointer;
+    transition: all 0.3s ease;
+}
+
+.indicator.active {
+    background: white;
+    transform: scale(1.2);
+}
+
+@media (max-width: 768px) {
+    .carousel-container {
+        height: 400px;
+    }
+    
+    .carousel-item {
+        width: 220px;
+        height: 320px;
+        margin-left: -110px;
+        margin-top: -160px;
+    }
+    
+    h1 {
+        font-size: 2rem;
+    }
+}
+
+@media (max-width: 480px) {
+    .carousel-container {
+        height: 350px;
+    }
+    
+    .carousel-item {
+        width: 180px;
+        height: 260px;
+        margin-left: -90px;
+        margin-top: -130px;
+    }
+    
+    .controls {
+        flex-direction: column;
+        gap: 10px;
+    }
+    
+    .drag-hint {
+        font-size: 0.8rem;
+        padding: 6px 12px;
+    }
 }
 </style>
