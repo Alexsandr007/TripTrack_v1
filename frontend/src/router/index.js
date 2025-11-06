@@ -4,13 +4,15 @@ import RegisterComponent from '../components/home/auth/RegisterComponent.vue'; /
 import Login from '../components/home/auth/LoginComponent.vue'
 import Recovery from '../components/home/auth/RecoveryComponent.vue'
 import Profile from '../components/profile/profileComponent.vue'
+import TestComponent from '@/components/TestComponent.vue';
 
 const routes = [
   { path: '/', name: 'Home', component: baseHomeComponent },
   { path: '/login', name: 'Login', component: Login },
   { path: '/register', name: 'Register', component: RegisterComponent },
   { path: '/recovery', name: 'Recovery', component: Recovery },
-  { path: '/profile', name: 'Profile', component: Profile }
+  { path: '/profile', name: 'Profile', component: Profile },
+  { path: '/test-api', name: 'TestAPI', component: TestComponent } // Добавьте этот маршрут
   
 ];
 
