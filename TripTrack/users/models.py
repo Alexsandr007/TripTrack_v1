@@ -1,12 +1,12 @@
-# users/models.py
 from django.contrib.auth.models import AbstractUser
 from django.db import models
+
 
 class CustomUser(AbstractUser):
     mentor_login = models.CharField(max_length=100, blank=True)
     full_name = models.CharField(max_length=255, blank=True)
     
-    # Добавляем related_name чтобы избежать конфликтов
+    # Обязательно добавляем related_name чтобы избежать конфликтов
     groups = models.ManyToManyField(
         'auth.Group',
         verbose_name='groups',

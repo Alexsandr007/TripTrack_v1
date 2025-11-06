@@ -1,10 +1,12 @@
-# urls.py
 from django.urls import path
-from . import views
+from .views import (
+    CustomUserRegistrationAPIView,
+    VerifyAuthAPIView,
+    TestAPIView
+)
 
 urlpatterns = [
-    path('register/', views.register_user, name='register'),
-    path('verify/', views.verify_auth, name='verify_auth'),
-    path('check-token/', views.check_token, name='check_token'),  # Добавьте этот маршрут
-    # ... другие маршруты
+    path('register/', CustomUserRegistrationAPIView.as_view(), name='register'),
+    path('verify/', VerifyAuthAPIView.as_view(), name='verify'),
+    path('test/', TestAPIView.as_view(), name='test'),
 ]
