@@ -1,5 +1,5 @@
 <template>
-  <div class="register-page">
+  <div class="login-page">
     <!-- Модальное окно с blur -->
     <div class="modal-overlay" @click="closeModal">
       <div class="modal-content" @click.stop>
@@ -13,6 +13,7 @@
               type="text"
               placeholder="Введите логин"
               required
+              :disabled="isLoading"
             />
           </div>
           <div class="form-group">
@@ -23,75 +24,209 @@
               type="password"
               placeholder="Введите пароль"
               required
+              :disabled="isLoading"
             />
           </div>
-        
-          <p v-if="errorMessage" class="error-message">{{ errorMessage }}</p>
-          <button type="submit" class="btn register-btn" :disabled="isLoading">
+          
+          <!-- Показываем ошибки валидации -->
+          <div v-if="validationErrors" class="validation-errors">
+            <p v-for="error in validationErrors" :key="error" class="error-message">
+              {{ error }}
+            </p>
+          </div>
+          
+          <!-- Сообщение об успехе -->
+          <div v-if="successMessage" class="success-message">
+            {{ successMessage }}
+          </div>
+          
+          <button type="submit" class="btn login-btn" :disabled="isLoading">
             {{ isLoading ? 'Вход...' : 'Войти' }}
           </button>
         </form>
-        <p class="login-link">Забыли пароль? <a @click="navigation.goToRecovery">Восстановить</a></p>
+        <p class="register-link">
+          Нет аккаунта? 
+          <a @click="goToRegister">Зарегистрироваться</a>
+        </p>
+        <p class="recovery-link">
+          Забыли пароль? 
+          <a @click="goToRecovery">Восстановить</a>
+        </p>
       </div>
     </div>
   </div>
 </template>
 
 <script>
-import { defineComponent, ref, reactive, inject  } from 'vue';
+import { defineComponent, ref, reactive, inject } from 'vue';
+import { useRouter } from 'vue-router';
 
 export default defineComponent({
   name: 'LoginPage',
-  emits: ['register-success', 'go-to-login', 'close'],
+  emits: ['login-success', 'go-to-register', 'go-to-recovery', 'close'],
   setup(props, { emit }) {
-    const navigation = inject('navigation')
+    const navigation = inject('navigation');
+    const router = useRouter();
+    
     const form = reactive({
-      login:'',
+      login: '',
       password: '',
     });
+    
     const errorMessage = ref('');
+    const successMessage = ref('');
+    const validationErrors = ref([]);
     const isLoading = ref(false);
 
     const validateForm = () => {
-      if (!form.login.trim()) return 'Логин обязателен';
-      if (form.password.length < 6) return 'Пароль должен быть не менее 6 символов';
-      return null;
+      const errors = [];
+      
+      if (!form.login.trim()) errors.push('Логин обязателен');
+      if (form.password.length < 6) errors.push('Пароль должен быть не менее 6 символов');
+      
+      return errors;
     };
 
     const handleSubmit = async () => {
+      // Сбрасываем сообщения
       errorMessage.value = '';
-      const validationError = validateForm();
-      if (validationError) {
-        errorMessage.value = validationError;
+      successMessage.value = '';
+      validationErrors.value = [];
+      
+      // Валидация на клиенте
+      const clientErrors = validateForm();
+      if (clientErrors.length > 0) {
+        validationErrors.value = clientErrors;
         return;
       }
 
       isLoading.value = true;
-      // Имитация API-запроса (замените на реальный)
-      setTimeout(() => {
+
+      try {
+        console.log('=== НАЧАЛО АВТОРИЗАЦИИ В VUE ===');
+        
+        const API_BASE = process.env.NODE_ENV === 'development' 
+          ? 'http://127.0.0.1:8000' 
+          : '';
+        
+        console.log('Отправка данных на авторизацию:', { ...form });
+        
+        const response = await fetch(`${API_BASE}/api/auth/login/`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            login: form.login,
+            password: form.password
+          })
+        });
+
+        console.log('Статус ответа:', response.status);
+        console.log('Заголовки ответа:', Object.fromEntries(response.headers.entries()));
+
+        // Проверяем Content-Type перед парсингом JSON
+        const contentType = response.headers.get('content-type');
+        
+        if (!contentType || !contentType.includes('application/json')) {
+          const textResponse = await response.text();
+          console.error('Server returned non-JSON response:', textResponse.substring(0, 500));
+          throw new Error('Сервер вернул некорректный ответ');
+        }
+
+        const data = await response.json();
+        console.log('Ответ от сервера:', data);
+
+        if (response.ok && data.success) {
+          successMessage.value = data.message || 'Авторизация успешна!';
+          
+          // Сохраняем токен и данные пользователя
+          console.log('Сохранение данных в localStorage...');
+          
+          if (data.token) {
+            localStorage.setItem('authToken', data.token);
+            console.log('✅ Токен сохранен:', data.token);
+          }
+          
+          if (data.user) {
+            localStorage.setItem('user', JSON.stringify(data.user));
+            console.log('✅ Данные пользователя сохранены:', data.user);
+          }
+          
+          // Проверяем что данные сохранились
+          console.log('Проверка localStorage после авторизации:');
+          console.log('authToken:', localStorage.getItem('authToken'));
+          console.log('user:', localStorage.getItem('user'));
+          
+          // Очищаем форму
+          Object.keys(form).forEach(key => form[key] = '');
+          
+          console.log('=== УСПЕШНАЯ АВТОРИЗАЦИЯ ===');
+          console.log('Перенаправление на /profile через 1.5 секунды...');
+          
+          // Перенаправляем на страницу профиля через 1.5 секунды
+          setTimeout(() => {
+            console.log('Выполняется перенаправление на /profile');
+            router.push('/profile');
+            emit('login-success', data.user);
+          }, 1500);
+          
+        } else {
+          // Обработка ошибок от сервера
+          console.error('Ошибка авторизации:', data);
+          
+          if (data.errors) {
+            const serverErrors = [];
+            for (const field in data.errors) {
+              if (Array.isArray(data.errors[field])) {
+                serverErrors.push(...data.errors[field]);
+              } else {
+                serverErrors.push(data.errors[field]);
+              }
+            }
+            validationErrors.value = serverErrors;
+          } else if (data.error) {
+            errorMessage.value = data.error;
+          } else {
+            errorMessage.value = 'Ошибка при авторизации';
+          }
+        }
+      } catch (error) {
+        console.error('Login error:', error);
+        
+        if (error.message.includes('Сервер вернул некорректный ответ')) {
+          errorMessage.value = error.message;
+        } else if (error.message.includes('JSON')) {
+          errorMessage.value = 'Проблема с API сервером. Проверьте доступность эндпоинта /api/auth/login/';
+        } else {
+          errorMessage.value = 'Ошибка соединения с сервером. Проверьте подключение к интернету.';
+        }
+      } finally {
         isLoading.value = false;
-        emit('register-success', { ...form });
-        // Очистка формы после успеха
-        Object.keys(form).forEach(key => form[key] = '');
-      }, 2000);
+      }
     };
 
-    const goToLogin = () => {
-      emit('go-to-login');
+    const goToRegister = () => {
+      emit('go-to-register');
+    };
+
+    const goToRecovery = () => {
+      emit('go-to-recovery');
     };
 
     const closeModal = () => {
       emit('close');
     };
 
-
-
     return {
       form,
       errorMessage,
+      successMessage,
+      validationErrors,
       isLoading,
       handleSubmit,
-      goToLogin,
+      goToRegister,
+      goToRecovery,
       closeModal,
       navigation
     };
@@ -100,29 +235,31 @@ export default defineComponent({
 </script>
 
 <style scoped>
-.register-page {
+.login-page {
   position: fixed;
-  top: 0;
-  left: 0;
-  width: 100vw;
-  height: 100vh;
-  background: url('../../../assets/img/home/zamok.jpg') no-repeat center center;
-  background-size: cover;
-  z-index: 2000; /* Выше header/footer */
+    top: 0;
+    left: 0;
+    width: 100vw;
+    height: 100vh;
+    background: url('../../../assets/img/home/zamok.jpg') no-repeat center center;
+    background-size: cover;
+    z-index: 2000;
+    overflow: auto;
 }
 
 .modal-overlay {
-  position: absolute;
-  top: 0;
-  left: 0;
-  width: 100%;
-  height: 100%;
-  background: rgba(0, 0, 0, 0.5);
-  -webkit-backdrop-filter: blur(10px);
-  display: flex;
-  justify-content: center;
-  align-items: center;
-  animation: fadeIn 0.5s ease-in-out;
+position: relative;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 110%;
+    background: rgba(0, 0, 0, 0.5);
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    padding: 30px 0px;
+    animation: fadeIn-4e5986ba 0.5s 
+ease-in-out;
 }
 
 @keyframes fadeIn {
@@ -131,7 +268,7 @@ export default defineComponent({
 }
 
 .modal-content {
-  backdrop-filter: blur(10px);
+  backdrop-filter: blur(5px);
   border-radius: 15px;
   padding: 30px;
   max-width: 400px;
@@ -185,11 +322,32 @@ input:hover {
   border-color: rgba(255, 255, 255, 0.5);
 }
 
+input:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+/* Стили для сообщений */
+.success-message {
+  color: #4CAF50;
+  font-size: 0.9rem;
+  text-align: center;
+  margin-bottom: 15px;
+  padding: 10px;
+  background: rgba(76, 175, 80, 0.1);
+  border-radius: 5px;
+  border: 1px solid #4CAF50;
+}
+
+.validation-errors {
+  margin-bottom: 15px;
+}
+
 .error-message {
   color: #ff6b6b;
   font-size: 0.9rem;
   text-align: center;
-  margin-bottom: 15px;
+  margin-bottom: 5px;
   animation: shake 0.3s ease;
 }
 
@@ -212,12 +370,6 @@ input:hover {
   transition: all 0.3s ease;
   position: relative;
   overflow: hidden;
-  animation: pulse 2s infinite;
-}
-
-@keyframes pulse {
-  0%, 100% { transform: scale(1); }
-  50% { transform: scale(1.05); }
 }
 
 .btn::before {
@@ -232,36 +384,40 @@ input:hover {
   z-index: -1;
 }
 
-.btn:hover {
+.btn:hover:not(:disabled) {
   color: white;
   border-color: #25438B;
   box-shadow: 0 4px 15px rgba(37, 67, 139, 0.3);
 }
 
-.btn:hover::before {
+.btn:hover:not(:disabled)::before {
   left: 0;
 }
 
 .btn:disabled {
   opacity: 0.6;
   cursor: not-allowed;
+  animation: none;
 }
 
-.login-link {
+.register-link,
+.recovery-link {
   text-align: center;
   color: rgba(255, 255, 255, 0.8);
   font-size: 0.9rem;
   margin-top: 15px;
 }
 
-.login-link a {
+.register-link a,
+.recovery-link a {
   color: #25438B;
   cursor: pointer;
   text-decoration: underline;
   transition: color 0.3s ease;
 }
 
-.login-link a:hover {
+.register-link a:hover,
+.recovery-link a:hover {
   color: white;
 }
 

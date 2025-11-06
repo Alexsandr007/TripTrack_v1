@@ -29,10 +29,6 @@
         <div class="page-header">
           <div class="header-actions">
             <h1>Мой профиль</h1>
-            <button @click="logout" class="logout-btn">
-              <span class="logout-icon">🚪</span>
-              Выйти
-            </button>
           </div>
           <p>Управляйте вашей учетной записью и настройками</p>
         </div>
@@ -163,23 +159,13 @@ export default defineComponent({
       }
     };
 
-    // Выход из системы
+        // В главном компоненте профиля
     const logout = () => {
+      console.log('Logout from main profile');
       // Очищаем localStorage
       localStorage.removeItem('authToken');
       localStorage.removeItem('user');
-      
-      // Опционально: отправляем запрос на сервер для выхода
-      fetch('/api/auth/logout/', {
-        method: 'POST',
-        headers: {
-          'Authorization': `Token ${localStorage.getItem('authToken')}`,
-        },
-      }).catch(error => {
-        console.error('Ошибка при выходе:', error);
-      });
-      
-      // Перенаправляем на главную страницу
+      // Перенаправляем на главную
       router.push('/');
     };
 

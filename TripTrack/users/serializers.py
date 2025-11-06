@@ -1,7 +1,7 @@
 from rest_framework import serializers
 from django.contrib.auth.password_validation import validate_password
 from django.core.exceptions import ValidationError as DjangoValidationError
-from users.models import CustomUser
+from users.models import CustomUser, UserMentorRelationship
 
 
 class CustomUserSerializer(serializers.ModelSerializer):
@@ -49,7 +49,11 @@ class CustomUserRegistrationSerializer(serializers.Serializer):
         }
     )
     confirmPassword = serializers.CharField(write_only=True, required=True)
-    Mentorlogin = serializers.CharField(write_only=True, required=True)
+    Mentorlogin = serializers.CharField(
+        write_only=True, 
+        required=True,
+        error_messages={'required': 'Логин ментора обязателен'}
+    )
 
     def validate(self, attrs):
         # Проверка совпадения паролей
@@ -64,18 +68,35 @@ class CustomUserRegistrationSerializer(serializers.Serializer):
         except DjangoValidationError as e:
             raise serializers.ValidationError({'password': list(e.messages)})
 
-        # Проверка уникальности username
+        # Проверка уникальности username (без учета регистра)
         username = attrs['login']
-        if CustomUser.objects.filter(username=username).exists():
+        username_lower = username.lower()
+        
+        # Ищем пользователей с таким же логином (без учета регистра)
+        existing_users = CustomUser.objects.filter(username__iexact=username_lower)
+        if existing_users.exists():
             raise serializers.ValidationError({
-                'login': ['Пользователь с таким логином уже существует']
+                'login': [f'Пользователь с логином "{username}" уже существует (регистр не учитывается)']
             })
 
-        # Проверка уникальности email
+        # Проверка уникальности email (без учета регистра)
         email = attrs['email']
-        if CustomUser.objects.filter(email=email).exists():
+        email_lower = email.lower()
+        
+        # Ищем пользователей с таким же email (без учета регистра)
+        existing_emails = CustomUser.objects.filter(email__iexact=email_lower)
+        if existing_emails.exists():
             raise serializers.ValidationError({
-                'email': ['Пользователь с таким email уже существует']
+                'email': [f'Пользователь с email "{email}" уже существует (регистр не учитывается)']
+            })
+
+        # ПРОВЕРКА СУЩЕСТВОВАНИЯ МЕНТОРА (без учета регистра)
+        mentor_login = attrs['Mentorlogin']
+        mentor_login_lower = mentor_login.lower()
+        
+        if not CustomUser.objects.filter(username__iexact=mentor_login_lower).exists():
+            raise serializers.ValidationError({
+                'Mentorlogin': [f'Ментор с логином "{mentor_login}" не существует']
             })
 
         return attrs
@@ -84,12 +105,23 @@ class CustomUserRegistrationSerializer(serializers.Serializer):
         """
         Создание кастомного пользователя
         """
+        # Получаем ментора из базы данных (без учета регистра)
+        mentor_login = validated_data['Mentorlogin']
+        mentor = CustomUser.objects.get(username__iexact=mentor_login.lower())
+        
+        # Приводим логин и email к нижнему регистру для хранения
+        username_lower = validated_data['login'].lower()
+        email_lower = validated_data['email'].lower()
+        
         user = CustomUser.objects.create_user(
-            username=validated_data['login'],
-            email=validated_data['email'],
+            username=username_lower,  # Сохраняем в нижнем регистре
+            email=email_lower,        # Сохраняем в нижнем регистре
             password=validated_data['password'],
-            first_name=validated_data['fullName'],  # сохраняем в first_name
-            full_name=validated_data['fullName'],   # и в full_name
+            first_name=validated_data['fullName'],
+            full_name=validated_data['fullName'],
             mentor_login=validated_data['Mentorlogin']
         )
+        
+        print(f"Пользователь {user.username} зарегистрирован с ментором {mentor.username}")
+        
         return user

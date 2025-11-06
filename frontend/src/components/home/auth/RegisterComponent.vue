@@ -318,21 +318,23 @@ export default defineComponent({
   background: url('../../../assets/img/home/jungle-bg.jpg') no-repeat center center;
   background-size: cover;
   z-index: 2000;
+  overflow: auto;
 }
 
+
 .modal-overlay {
-  position: absolute;
-  top: 0;
-  left: 0;
-  width: 100%;
-  height: 100%;
-  background: rgba(0, 0, 0, 0.5);
-  -webkit-backdrop-filter: blur(10px);
-  backdrop-filter: blur(10px);
-  display: flex;
-  justify-content: center;
-  align-items: center;
-  animation: fadeIn 0.5s ease-in-out;
+position: relative;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 110%;
+    background: rgba(0, 0, 0, 0.5);
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    padding: 30px 0px;
+    animation: fadeIn-4e5986ba 0.5s 
+ease-in-out;
 }
 
 @keyframes fadeIn {
@@ -341,7 +343,7 @@ export default defineComponent({
 }
 
 .modal-content {
-  backdrop-filter: blur(10px);
+  backdrop-filter: blur(5px);
   border-radius: 15px;
   padding: 30px;
   max-width: 400px;
