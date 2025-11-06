@@ -567,3 +567,172 @@ class UserBalanceSummaryAPIView(View):
                 'success': False,
                 'error': f'Ошибка сервера: {str(e)}'
             }, status=500)
+        
+
+# Добавьте в конец views.py
+
+@method_decorator(csrf_exempt, name='dispatch')
+class UpdateBalanceAPIView(View):
+    """
+    API View для обновления баланса пользователя с WebSocket уведомлением
+    """
+    def post(self, request):
+        try:
+            print("=== ОБНОВЛЕНИЕ БАЛАНСА ===")
+            
+            # Получаем токен из заголовков
+            auth_header = request.headers.get('Authorization', '')
+            if not auth_header.startswith('Token '):
+                return JsonResponse({
+                    'success': False,
+                    'error': 'Требуется авторизация'
+                }, status=401)
+            
+            token = auth_header[6:]
+            token_obj = Token.objects.get(key=token)
+            user = token_obj.user
+            
+            # Парсим данные
+            data = json.loads(request.body.decode('utf-8'))
+            new_balance = data.get('balance')
+            
+            if not new_balance:
+                return JsonResponse({
+                    'success': False,
+                    'error': 'Баланс не указан'
+                }, status=400)
+            
+            print(f"Обновление баланса для {user.username}: {user.balance_amount} -> {new_balance}")
+            
+            # Обновляем баланс
+            from decimal import Decimal
+            user.balance_amount = Decimal(new_balance)
+            user.save()
+            
+            # Отправляем WebSocket уведомление
+            from .websocket_utils import send_balance_update
+            send_balance_update(user.id, new_balance)
+            
+            return JsonResponse({
+                'success': True,
+                'message': 'Баланс обновлен',
+                'new_balance': str(new_balance)
+            })
+            
+        except Token.DoesNotExist:
+            return JsonResponse({
+                'success': False,
+                'error': 'Невалидный токен'
+            }, status=401)
+        except Exception as e:
+            print("Ошибка при обновлении баланса:", str(e))
+            import traceback
+            traceback.print_exc()
+            return JsonResponse({
+                'success': False,
+                'error': f'Ошибка сервера: {str(e)}'
+            }, status=500)
+
+    def options(self, request, *args, **kwargs):
+        """Обработка CORS preflight"""
+        response = JsonResponse({"status": "ok"})
+        response["Access-Control-Allow-Origin"] = "*"
+        response["Access-Control-Allow-Methods"] = "POST, OPTIONS"
+        response["Access-Control-Allow-Headers"] = "Content-Type, Authorization"
+        return response
+
+
+@method_decorator(csrf_exempt, name='dispatch')
+class CreateTransactionAPIView(View):
+    """
+    API View для создания транзакции с WebSocket уведомлением
+    """
+    def post(self, request):
+        try:
+            print("=== СОЗДАНИЕ ТРАНЗАКЦИИ ===")
+            
+            # Получаем токен из заголовков
+            auth_header = request.headers.get('Authorization', '')
+            if not auth_header.startswith('Token '):
+                return JsonResponse({
+                    'success': False,
+                    'error': 'Требуется авторизация'
+                }, status=401)
+            
+            token = auth_header[6:]
+            token_obj = Token.objects.get(key=token)
+            user = token_obj.user
+            
+            # Парсим данные
+            data = json.loads(request.body.decode('utf-8'))
+            amount = data.get('amount')
+            transaction_type = data.get('type', 'income')
+            description = data.get('description', '')
+            
+            if not amount:
+                return JsonResponse({
+                    'success': False,
+                    'error': 'Сумма не указана'
+                }, status=400)
+            
+            print(f"Создание транзакции для {user.username}: {amount} {transaction_type}")
+            
+            # Создаем транзакцию
+            from decimal import Decimal
+            transaction = Transaction.objects.create(
+                user=user,
+                amount=Decimal(amount),
+                transaction_type=transaction_type,
+                description=description,
+                currency=user.balance_currency
+            )
+            
+            # Обновляем баланс пользователя
+            if transaction_type in ['income', 'bonus', 'task']:
+                user.balance_amount += Decimal(amount)
+            else:
+                user.balance_amount -= Decimal(amount)
+            user.save()
+            
+            # Подготавливаем данные для WebSocket
+            transaction_data = {
+                'id': transaction.id,
+                'amount': str(transaction.amount),
+                'type': transaction.transaction_type,
+                'description': transaction.description,
+                'date': transaction.created_at.isoformat()
+            }
+            
+            # Отправляем WebSocket уведомления
+            from .websocket_utils import send_balance_update, send_transaction_update
+            send_balance_update(user.id, user.balance_amount)
+            send_transaction_update(user.id, transaction_data)
+            
+            return JsonResponse({
+                'success': True,
+                'message': 'Транзакция создана',
+                'transaction': transaction_data,
+                'new_balance': str(user.balance_amount)
+            })
+            
+        except Token.DoesNotExist:
+            return JsonResponse({
+                'success': False,
+                'error': 'Невалидный токен'
+            }, status=401)
+        except Exception as e:
+            print("Ошибка при создании транзакции:", str(e))
+            import traceback
+            traceback.print_exc()
+            return JsonResponse({
+                'success': False,
+                'error': f'Ошибка сервера: {str(e)}'
+            }, status=500)
+
+    def options(self, request, *args, **kwargs):
+        """Обработка CORS preflight"""
+        response = JsonResponse({"status": "ok"})
+        response["Access-Control-Allow-Origin"] = "*"
+        response["Access-Control-Allow-Methods"] = "POST, OPTIONS"
+        response["Access-Control-Allow-Headers"] = "Content-Type, Authorization"
+        return response

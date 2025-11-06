@@ -26,13 +26,13 @@ SECRET_KEY = 'django-insecure-+1k*f*pd(aa1rn0p96=_2kqwgvnnfcmb2o)k*ii7p5$lh4*1-a
 # SECURITY WARNING: don't run with debug turned on in production!
 DEBUG = True
 
-ALLOWED_HOSTS = []
 
 AUTH_USER_MODEL = 'users.CustomUser'
 
 # Application definition
 
 INSTALLED_APPS = [
+    'channels',
     'django.contrib.admin',
     'django.contrib.auth',
     'django.contrib.contenttypes',
@@ -56,11 +56,23 @@ MIDDLEWARE = [
     'django.middleware.clickjacking.XFrameOptionsMiddleware',
 ]
 
+ALLOWED_HOSTS = ['localhost', '127.0.0.1', '0.0.0.0']
+
 CORS_ALLOWED_ORIGINS = [
     "http://localhost:8080",
     "http://127.0.0.1:8080",
+    "http://0.0.0.0:8080",
 ]
 
+
+# Для WebSocket
+CSRF_TRUSTED_ORIGINS = [
+    'http://localhost:8080',
+    'http://127.0.0.1:8080', 
+]
+
+
+ASGI_APPLICATION = 'TripTrack.asgi.application'
 
 ROOT_URLCONF = 'TripTrack.urls'
 
@@ -127,6 +139,20 @@ REST_FRAMEWORK = {
 # CORS настройки
 CORS_ALLOW_ALL_ORIGINS = True
 CORS_ALLOW_CREDENTIALS = True
+
+ASGI_APPLICATION = 'TripTrack.asgi.application'
+
+# settings.py
+CHANNEL_LAYERS = {
+    "default": {
+        "BACKEND": "channels_redis.core.RedisChannelLayer",
+        "CONFIG": {
+            "hosts": [("127.0.0.1", 6379)],
+            "capacity": 1500,
+            "expiry": 10,
+        },
+    },
+}
 
 
 # Internationalization

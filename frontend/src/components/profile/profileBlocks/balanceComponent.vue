@@ -1,29 +1,43 @@
 <template>
   <div class="profile-block balance-block">
-    <h3>Баланс</h3>
+    <h3>Баланс 
+      <span v-if="connected" class="connection-status connected">🟢</span>
+      <span v-else class="connection-status disconnected">🔴</span>
+    </h3>
+    
+    <!-- Статус соединения -->
+    <div v-if="!connected" class="connection-warning">
+      <p>Нет соединения с сервером. Данные могут быть неактуальны.</p>
+      <button @click="loadBalanceData" class="retry-btn">Переподключиться</button>
+    </div>
     
     <!-- Загрузка -->
-    <div v-if="loading" class="loading">
+    <div v-if="loading && transactions.length === 0" class="loading">
       <div class="loading-spinner"></div>
       <p>Загрузка данных...</p>
     </div>
     
     <!-- Ошибка -->
-    <div v-else-if="error" class="error-message">
+    <div v-else-if="error && transactions.length === 0" class="error-message">
       {{ error }}
       <button @click="loadBalanceData" class="retry-btn">Повторить</button>
     </div>
     
     <!-- Основной контент -->
-    <div v-else>
+    <div>
       <div class="balance-header">
         <div class="balance-amount">
           <span class="amount">{{ formattedAmount }}</span>
-          <span class="currency">{{ balance.currency_display || balance.currency }}</span>
+          <span class="currency">{{ balance.currency_display }}</span>
         </div>
-        <button @click="loadBalanceData" class="refresh-btn" :disabled="loading">
-          🔄
-        </button>
+        <div class="balance-controls">
+          <span v-if="lastUpdate" class="last-update">
+            Обновлено: {{ formatTime(lastUpdate) }}
+          </span>
+          <button @click="loadBalanceData" class="refresh-btn" :disabled="loading">
+            🔄
+          </button>
+        </div>
       </div>
       
       <div class="balance-actions">
@@ -38,6 +52,12 @@
             🔄
           </button>
         </div>
+        
+        <!-- Индикатор загрузки новых данных -->
+        <div v-if="loading && transactions.length > 0" class="loading-more">
+          Обновление данных...
+        </div>
+        
         <div class="transactions">
           <div v-if="transactions.length === 0" class="no-transactions">
             <p>Нет операций</p>
@@ -45,10 +65,10 @@
           <div v-else v-for="transaction in transactions" :key="transaction.id" class="transaction-item">
             <div class="transaction-info">
               <span class="transaction-desc">{{ transaction.description }}</span>
-              <span class="transaction-date">{{ transaction.date }}</span>
+              <span class="transaction-date">{{ formatDate(transaction.date) }}</span>
             </div>
             <span :class="['transaction-amount', getTransactionType(transaction.type)]">
-              {{ transaction.amount_display }} {{ transaction.currency }}
+              {{ formatTransactionAmount(transaction) }} {{ transaction.currency || balance.currency }}
             </span>
           </div>
         </div>
@@ -59,7 +79,7 @@
 
 <script>
 import { defineComponent, onMounted } from 'vue';
-import { useBalance } from '@/composables/useBalance';
+import { useBalanceWebSocket } from '@/composables/useBalanceWebSocket';
 
 export default defineComponent({
   name: 'BalanceBlock',
@@ -69,16 +89,50 @@ export default defineComponent({
       transactions, 
       formattedAmount, 
       loading, 
-      error, 
-      loadBalanceData 
-    } = useBalance();
+      error,
+      connected,
+      lastUpdate,
+      loadBalanceData,
+      withdraw,
+      deposit
+    } = useBalanceWebSocket();
 
     const getTransactionType = (type) => {
-      return type === 'income' || type === 'bonus' || type === 'task' ? 'income' : 'outcome';
+      const incomeTypes = ['income', 'bonus', 'task', 'deposit', 'refill'];
+      return incomeTypes.includes(type) ? 'income' : 'outcome';
+    };
+
+    const formatTransactionAmount = (transaction) => {
+      const amount = parseFloat(transaction.amount) || 0;
+      const sign = getTransactionType(transaction.type) === 'income' ? '+' : '-';
+      return `${sign}${Math.abs(amount).toLocaleString('ru-RU', {
+        minimumFractionDigits: 2,
+        maximumFractionDigits: 2
+      })}`;
+    };
+
+    const formatDate = (dateString) => {
+      if (!dateString) return '';
+      const date = new Date(dateString);
+      return date.toLocaleDateString('ru-RU', {
+        day: '2-digit',
+        month: '2-digit',
+        year: 'numeric',
+        hour: '2-digit',
+        minute: '2-digit'
+      });
+    };
+
+    const formatTime = (date) => {
+      return date.toLocaleTimeString('ru-RU', {
+        hour: '2-digit',
+        minute: '2-digit'
+      });
     };
 
     onMounted(() => {
-      loadBalanceData();
+      // Данные автоматически загружаются через WebSocket
+      // при подключении в композабле
     });
 
     return {
@@ -87,9 +141,14 @@ export default defineComponent({
       formattedAmount,
       loading,
       error,
-      withdraw: () => console.log('Withdraw'),
-      deposit: () => console.log('Deposit'),
+      connected,
+      lastUpdate,
+      withdraw,
+      deposit,
       getTransactionType,
+      formatTransactionAmount,
+      formatDate,
+      formatTime,
       loadBalanceData
     };
   }
@@ -97,13 +156,58 @@ export default defineComponent({
 </script>
 
 <style scoped>
+/* Добавим новые стили для статуса соединения */
+.connection-status {
+  margin-left: 10px;
+  font-size: 0.8rem;
+}
+
+.connection-warning {
+  background: rgba(255, 193, 7, 0.1);
+  border: 1px solid rgba(255, 193, 7, 0.3);
+  border-radius: 8px;
+  padding: 10px;
+  margin-bottom: 15px;
+  text-align: center;
+}
+
+.connection-warning p {
+  color: #ffc107;
+  margin: 0 0 10px 0;
+  font-size: 0.9rem;
+}
+
+.balance-controls {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 5px;
+}
+
+.last-update {
+  color: rgba(255, 255, 255, 0.5);
+  font-size: 0.8rem;
+}
+
+.loading-more {
+  text-align: center;
+  padding: 10px;
+  color: rgba(255, 255, 255, 0.7);
+  font-size: 0.9rem;
+  background: rgba(255, 255, 255, 0.05);
+  border-radius: 4px;
+  margin-bottom: 10px;
+}
+
+/* Остальные стили остаются такими же, как у вас */
 .balance-block h3 {
   color: white;
   margin-bottom: 20px;
   font-size: 1.3rem;
+  display: flex;
+  align-items: center;
 }
 
-/* Стили для загрузки */
 .loading {
   text-align: center;
   padding: 20px;
@@ -129,7 +233,6 @@ export default defineComponent({
   font-size: 0.9rem;
 }
 
-/* Стили для ошибки */
 .error-message {
   color: #f44336;
   text-align: center;
@@ -153,16 +256,11 @@ export default defineComponent({
   background: #d32f2f;
 }
 
-/* Заголовок баланса с кнопкой обновления */
 .balance-header {
   display: flex;
   justify-content: space-between;
   align-items: center;
   margin-bottom: 30px;
-}
-
-.balance-amount {
-  text-align: left;
 }
 
 .refresh-btn {
@@ -235,7 +333,6 @@ export default defineComponent({
   box-shadow: 0 5px 15px rgba(37, 67, 139, 0.3);
 }
 
-/* Заголовок транзакций */
 .transaction-header {
   display: flex;
   justify-content: space-between;

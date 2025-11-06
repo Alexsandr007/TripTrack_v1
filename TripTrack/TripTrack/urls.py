@@ -25,3 +25,4 @@ urlpatterns = [
     path('api/auth/', include('users.urls')),  # Замените 'your_app' на имя вашего DRF приложения
     # ... другие маршруты
 ]
+
