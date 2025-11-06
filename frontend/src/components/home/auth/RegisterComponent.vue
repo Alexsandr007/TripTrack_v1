@@ -1,6 +1,5 @@
 <template>
   <div class="register-page">
-    <!-- Модальное окно с blur -->
     <div class="modal-overlay" @click="closeModal">
       <div class="modal-content" @click.stop>
         <h2>Регистрация</h2>
@@ -9,10 +8,11 @@
             <label for="fullName">Полное имя</label>
             <input
               id="fullName"
-              v-model="form.name"
+              v-model="form.fullName"
               type="text"
               placeholder="Введите имя"
               required
+              :disabled="isLoading"
             />
           </div>
           <div class="form-group">
@@ -23,6 +23,7 @@
               type="text"
               placeholder="Введите логин"
               required
+              :disabled="isLoading"
             />
           </div>
           <div class="form-group">
@@ -33,6 +34,7 @@
               type="email"
               placeholder="Введите ваш email"
               required
+              :disabled="isLoading"
             />
           </div>
           <div class="form-group">
@@ -43,6 +45,7 @@
               type="password"
               placeholder="Введите пароль"
               required
+              :disabled="isLoading"
             />
           </div>
           <div class="form-group">
@@ -53,9 +56,10 @@
               type="password"
               placeholder="Повторите пароль"
               required
+              :disabled="isLoading"
             />
           </div>
-           <div class="form-group">
+          <div class="form-group">
             <label for="Mentorlogin">Логин Ментора</label>
             <input
               id="Mentorlogin"
@@ -63,64 +67,198 @@
               type="text"
               placeholder="Введите логин Ментора"
               required
+              :disabled="isLoading"
             />
           </div>
-          <p v-if="errorMessage" class="error-message">{{ errorMessage }}</p>
+          
+          <!-- Показываем ошибки валидации -->
+          <div v-if="validationErrors" class="validation-errors">
+            <p v-for="error in validationErrors" :key="error" class="error-message">
+              {{ error }}
+            </p>
+          </div>
+          
+          <!-- Сообщение об успехе -->
+          <div v-if="successMessage" class="success-message">
+            {{ successMessage }}
+          </div>
+          
           <button type="submit" class="btn register-btn" :disabled="isLoading">
             {{ isLoading ? 'Регистрация...' : 'Зарегистрироваться' }}
           </button>
         </form>
-        <p class="login-link">Уже есть аккаунт? <a @click="navigation.goToLogin">Войти</a></p>
+        <p class="login-link">Уже есть аккаунт? <a @click="goToLogin">Войти</a></p>
       </div>
     </div>
   </div>
 </template>
 
 <script>
-import { defineComponent, ref, reactive, inject  } from 'vue';
+import { defineComponent, ref, reactive, inject } from 'vue';
+import { useRouter } from 'vue-router';
 
 export default defineComponent({
   name: 'RegisterPage',
   emits: ['register-success', 'go-to-login', 'close'],
   setup(props, { emit }) {
-    const navigation = inject('navigation')
+    const navigation = inject('navigation');
+    const router = useRouter();
+    
     const form = reactive({
       fullName: '',
-      login:'',
+      login: '',
       email: '',
       password: '',
       confirmPassword: '',
       Mentorlogin: ''
     });
+    
     const errorMessage = ref('');
+    const successMessage = ref('');
+    const validationErrors = ref([]);
     const isLoading = ref(false);
 
     const validateForm = () => {
-      if (!form.fullName.trim()) return 'Имя обязательно';
-      if (!form.login.trim()) return 'Логин обязателен';
-      if (!form.email.includes('@')) return 'Некорректный email';
-      if (form.password.length < 6) return 'Пароль должен быть не менее 6 символов';
-      if (form.password !== form.confirmPassword) return 'Пароли не совпадают';
-      if (!form.Mentorlogin.trim()) return 'Логин Ментора обязателен';
-      return null;
+      const errors = [];
+      
+      if (!form.fullName.trim()) errors.push('Имя обязательно');
+      if (!form.login.trim()) errors.push('Логин обязателен');
+      if (!form.email.includes('@')) errors.push('Некорректный email');
+      if (form.password.length < 6) errors.push('Пароль должен быть не менее 6 символов');
+      if (form.password !== form.confirmPassword) errors.push('Пароли не совпадают');
+      if (!form.Mentorlogin.trim()) errors.push('Логин Ментора обязателен');
+      
+      return errors;
     };
 
     const handleSubmit = async () => {
+      // Сбрасываем сообщения
       errorMessage.value = '';
-      const validationError = validateForm();
-      if (validationError) {
-        errorMessage.value = validationError;
+      successMessage.value = '';
+      validationErrors.value = [];
+      
+      // Валидация на клиенте
+      const clientErrors = validateForm();
+      if (clientErrors.length > 0) {
+        validationErrors.value = clientErrors;
         return;
       }
 
       isLoading.value = true;
-      // Имитация API-запроса (замените на реальный)
-      setTimeout(() => {
+
+      try {
+        // Добавляем базовый URL для разработки
+        const API_BASE = process.env.NODE_ENV === 'development' 
+          ? 'http://127.0.0.1:8000' 
+          : '';
+        
+        console.log('=== НАЧАЛО РЕГИСТРАЦИИ ===');
+        console.log('Отправка данных на:', `${API_BASE}/api/auth/register/`);
+        console.log('Данные формы:', { ...form });
+        
+        const response = await fetch(`${API_BASE}/api/auth/register/`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            fullName: form.fullName,
+            login: form.login,
+            email: form.email,
+            password: form.password,
+            confirmPassword: form.confirmPassword,
+            Mentorlogin: form.Mentorlogin
+          })
+        });
+
+        console.log('Статус ответа:', response.status);
+        console.log('Заголовки ответа:', Object.fromEntries(response.headers.entries()));
+
+        // Проверяем Content-Type перед парсингом JSON
+        const contentType = response.headers.get('content-type');
+        
+        if (!contentType || !contentType.includes('application/json')) {
+          // Если сервер вернул не JSON, значит что-то не так с API
+          const textResponse = await response.text();
+          console.error('Server returned non-JSON response:', textResponse.substring(0, 500));
+          throw new Error('Сервер вернул некорректный ответ. Проверьте настройки API.');
+        }
+
+        const data = await response.json();
+        console.log('Ответ от сервера:', data);
+
+        if (response.ok && data.success) {
+          successMessage.value = data.message || 'Регистрация успешна!';
+          
+          // ВАЖНО: Сохраняем токен и данные пользователя
+          console.log('Сохранение данных в localStorage...');
+          
+          if (data.token) {
+            localStorage.setItem('authToken', data.token);
+            console.log('✅ Токен сохранен:', data.token);
+          } else {
+            console.warn('⚠️ Токен не получен от сервера');
+          }
+          
+          if (data.user) {
+            localStorage.setItem('user', JSON.stringify(data.user));
+            console.log('✅ Данные пользователя сохранены:', data.user);
+          } else {
+            console.warn('⚠️ Данные пользователя не получены от сервера');
+          }
+          
+          // Проверяем что данные действительно сохранились
+          console.log('Проверка localStorage после сохранения:');
+          console.log('authToken:', localStorage.getItem('authToken'));
+          console.log('user:', localStorage.getItem('user'));
+          
+          // Очищаем форму
+          Object.keys(form).forEach(key => form[key] = '');
+          
+          console.log('=== УСПЕШНАЯ РЕГИСТРАЦИЯ ===');
+          console.log('Перенаправление на /profile через 1.5 секунды...');
+          
+          // Перенаправляем на страницу профиля через 1.5 секунды
+          setTimeout(() => {
+            console.log('Выполняется перенаправление на /profile');
+            router.push('/profile');
+            emit('register-success', data.user);
+          }, 1500);
+          
+        } else {
+          // Обработка ошибок от сервера
+          console.error('Ошибка регистрации:', data);
+          
+          if (data.errors) {
+            const serverErrors = [];
+            for (const field in data.errors) {
+              // Преобразуем ошибки Django в читаемый формат
+              if (Array.isArray(data.errors[field])) {
+                serverErrors.push(...data.errors[field]);
+              } else {
+                serverErrors.push(data.errors[field]);
+              }
+            }
+            validationErrors.value = serverErrors;
+          } else if (data.error) {
+            errorMessage.value = data.error;
+          } else {
+            errorMessage.value = 'Ошибка при регистрации';
+          }
+        }
+      } catch (error) {
+        console.error('Registration error:', error);
+        
+        if (error.message.includes('Сервер вернул некорректный ответ')) {
+          errorMessage.value = error.message;
+        } else if (error.message.includes('JSON')) {
+          errorMessage.value = 'Проблема с API сервером. Проверьте доступность эндпоинта /api/auth/register/';
+        } else {
+          errorMessage.value = 'Ошибка соединения с сервером. Проверьте подключение к интернету.';
+        }
+      } finally {
         isLoading.value = false;
-        emit('register-success', { ...form });
-        // Очистка формы после успеха
-        Object.keys(form).forEach(key => form[key] = '');
-      }, 2000);
+      }
     };
 
     const goToLogin = () => {
@@ -134,6 +272,8 @@ export default defineComponent({
     return {
       form,
       errorMessage,
+      successMessage,
+      validationErrors,
       isLoading,
       handleSubmit,
       goToLogin,
@@ -145,6 +285,30 @@ export default defineComponent({
 </script>
 
 <style scoped>
+/* Стили остаются без изменений */
+.success-message {
+  color: #4CAF50;
+  font-size: 0.9rem;
+  text-align: center;
+  margin-bottom: 15px;
+  padding: 10px;
+  background: rgba(76, 175, 80, 0.1);
+  border-radius: 5px;
+  border: 1px solid #4CAF50;
+}
+
+.validation-errors {
+  margin-bottom: 15px;
+}
+
+.error-message {
+  color: #ff6b6b;
+  font-size: 0.9rem;
+  text-align: center;
+  margin-bottom: 5px;
+  animation: shake 0.3s ease;
+}
+
 .register-page {
   position: fixed;
   top: 0;
@@ -153,7 +317,7 @@ export default defineComponent({
   height: 100vh;
   background: url('../../../assets/img/home/jungle-bg.jpg') no-repeat center center;
   background-size: cover;
-  z-index: 2000; /* Выше header/footer */
+  z-index: 2000;
 }
 
 .modal-overlay {
@@ -164,6 +328,7 @@ export default defineComponent({
   height: 100%;
   background: rgba(0, 0, 0, 0.5);
   -webkit-backdrop-filter: blur(10px);
+  backdrop-filter: blur(10px);
   display: flex;
   justify-content: center;
   align-items: center;
@@ -230,12 +395,9 @@ input:hover {
   border-color: rgba(255, 255, 255, 0.5);
 }
 
-.error-message {
-  color: #ff6b6b;
-  font-size: 0.9rem;
-  text-align: center;
-  margin-bottom: 15px;
-  animation: shake 0.3s ease;
+input:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
 }
 
 @keyframes shake {
@@ -257,12 +419,6 @@ input:hover {
   transition: all 0.3s ease;
   position: relative;
   overflow: hidden;
-  animation: pulse 2s infinite;
-}
-
-@keyframes pulse {
-  0%, 100% { transform: scale(1); }
-  50% { transform: scale(1.05); }
 }
 
 .btn::before {
@@ -277,19 +433,20 @@ input:hover {
   z-index: -1;
 }
 
-.btn:hover {
+.btn:hover:not(:disabled) {
   color: white;
   border-color: #25438B;
   box-shadow: 0 4px 15px rgba(37, 67, 139, 0.3);
 }
 
-.btn:hover::before {
+.btn:hover:not(:disabled)::before {
   left: 0;
 }
 
 .btn:disabled {
   opacity: 0.6;
   cursor: not-allowed;
+  animation: none;
 }
 
 .login-link {
@@ -310,7 +467,6 @@ input:hover {
   color: white;
 }
 
-/* Адаптивность */
 @media (max-width: 768px) {
   .modal-content {
     padding: 20px;

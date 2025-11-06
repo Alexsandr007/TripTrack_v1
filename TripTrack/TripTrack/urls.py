@@ -1,3 +1,4 @@
+from django.contrib import admin
 from django.urls import path, include
 from django.http import JsonResponse
 from django.views.decorators.csrf import csrf_exempt
@@ -19,6 +20,8 @@ def test_api(request):
     return JsonResponse({'message': 'Hello from Django API!', 'method': request.method})
 
 urlpatterns = [
+        path('admin/', admin.site.urls),
     path('api/test/', test_api, name='test_api'),
+    path('api/auth/', include('users.urls')),  # Замените 'your_app' на имя вашего DRF приложения
     # ... другие маршруты
 ]
