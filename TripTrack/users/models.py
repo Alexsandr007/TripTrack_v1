@@ -8,6 +8,7 @@ from django.contrib.auth.models import AbstractUser, BaseUserManager
 from django.db import models
 from django.core.validators import MinValueValidator
 from decimal import Decimal
+from .websocket_utils import send_balance_update, send_transaction_update
 
 
 class CustomUserManager(BaseUserManager):
@@ -100,12 +101,18 @@ class CustomUser(AbstractUser):
     )
     
     def save(self, *args, **kwargs):
-        # Приводим username и email к нижнему регистру перед сохранением
-        if self.username:
-            self.username = self.username.lower()
-        if self.email:
-            self.email = self.email.lower()
+        # Проверяем, менялся ли баланс
+        balance_changed = False
+        if self.pk:
+            old_instance = CustomUser.objects.get(pk=self.pk)
+            balance_changed = old_instance.balance_amount != self.balance_amount
+        
         super().save(*args, **kwargs)
+        
+        # Отправляем уведомление если баланс изменился
+        if balance_changed:
+            print(f"🔄 Balance changed in model save: {self.balance_amount}")
+            send_balance_update(self.id, str(self.balance_amount))
     
     @property
     def balance(self):
@@ -156,6 +163,31 @@ class Transaction(models.Model):
         choices=[('pending', 'В обработке'), ('completed', 'Завершено'), ('failed', 'Ошибка')]
     )
     created_at = models.DateTimeField(auto_now_add=True)
+
+    def save(self, *args, **kwargs):
+        is_new = self.pk is None
+        super().save(*args, **kwargs)
+        
+        if is_new:
+            print(f"🔄 New transaction in model save: {self.amount}")
+            transaction_data = {
+                'id': self.id,
+                'amount': str(self.amount),
+                'type': self.transaction_type,
+                'description': self.description,
+                'date': self.created_at.isoformat()
+            }
+            send_transaction_update(self.user.id, transaction_data)
+            send_balance_update(self.user.id, str(self.user.balance_amount))
+    
+    def delete(self, *args, **kwargs):
+        user_id = self.user.id
+        super().delete(*args, **kwargs)
+        
+        # Обновляем баланс после удаления транзакции
+        from .models import CustomUser
+        user = CustomUser.objects.get(id=user_id)
+        send_balance_update(user_id, str(user.balance_amount))
     
     class Meta:
         db_table = 'user_transactions'
