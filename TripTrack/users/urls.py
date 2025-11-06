@@ -4,7 +4,10 @@ from .views import (
     CustomUserLoginAPIView,
     CustomUserLogoutAPIView,  # Добавляем новый view
     VerifyAuthAPIView,
-    TestAPIView
+    TestAPIView,
+    UserBalanceAPIView,           # Новые views
+    UserTransactionsAPIView,      # Новые views  
+    UserBalanceSummaryAPIView,    # Новые views
 )
 
 urlpatterns = [
@@ -13,4 +16,7 @@ urlpatterns = [
     path('logout/', CustomUserLogoutAPIView.as_view(), name='logout'),  # Новый маршрут
     path('verify/', VerifyAuthAPIView.as_view(), name='verify'),
     path('test/', TestAPIView.as_view(), name='test'),
+    path('balance/', UserBalanceAPIView.as_view(), name='balance'),
+    path('transactions/', UserTransactionsAPIView.as_view(), name='transactions'),
+    path('balance-summary/', UserBalanceSummaryAPIView.as_view(), name='balance_summary'),
 ]

@@ -2,27 +2,55 @@
   <div class="profile-block balance-block">
     <h3>Баланс</h3>
     
-    <div class="balance-amount">
-      <span class="amount">{{ balance.amount }}</span>
-      <span class="currency">{{ balance.currency }}</span>
+    <!-- Загрузка -->
+    <div v-if="loading" class="loading">
+      <div class="loading-spinner"></div>
+      <p>Загрузка данных...</p>
     </div>
     
-    <div class="balance-actions">
-      <button class="action-btn primary" @click="withdraw">Вывести</button>
-      <button class="action-btn secondary" @click="deposit">Пополнить</button>
+    <!-- Ошибка -->
+    <div v-else-if="error" class="error-message">
+      {{ error }}
+      <button @click="loadBalanceData" class="retry-btn">Повторить</button>
     </div>
     
-    <div class="transaction-history">
-      <h4>Последние операции</h4>
-      <div class="transactions">
-        <div v-for="transaction in transactions" :key="transaction.id" class="transaction-item">
-          <div class="transaction-info">
-            <span class="transaction-desc">{{ transaction.description }}</span>
-            <span class="transaction-date">{{ transaction.date }}</span>
+    <!-- Основной контент -->
+    <div v-else>
+      <div class="balance-header">
+        <div class="balance-amount">
+          <span class="amount">{{ formattedAmount }}</span>
+          <span class="currency">{{ balance.currency_display || balance.currency }}</span>
+        </div>
+        <button @click="loadBalanceData" class="refresh-btn" :disabled="loading">
+          🔄
+        </button>
+      </div>
+      
+      <div class="balance-actions">
+        <button class="action-btn primary" @click="withdraw">Вывести</button>
+        <button class="action-btn secondary" @click="deposit">Пополнить</button>
+      </div>
+      
+      <div class="transaction-history">
+        <div class="transaction-header">
+          <h4>Последние операции</h4>
+          <button @click="loadBalanceData" class="refresh-btn small" :disabled="loading">
+            🔄
+          </button>
+        </div>
+        <div class="transactions">
+          <div v-if="transactions.length === 0" class="no-transactions">
+            <p>Нет операций</p>
           </div>
-          <span :class="['transaction-amount', transaction.type]">
-            {{ transaction.amount }} {{ balance.currency }}
-          </span>
+          <div v-else v-for="transaction in transactions" :key="transaction.id" class="transaction-item">
+            <div class="transaction-info">
+              <span class="transaction-desc">{{ transaction.description }}</span>
+              <span class="transaction-date">{{ transaction.date }}</span>
+            </div>
+            <span :class="['transaction-amount', getTransactionType(transaction.type)]">
+              {{ transaction.amount_display }} {{ transaction.currency }}
+            </span>
+          </div>
         </div>
       </div>
     </div>
@@ -30,35 +58,39 @@
 </template>
 
 <script>
-import { defineComponent, reactive } from 'vue';
+import { defineComponent, onMounted } from 'vue';
+import { useBalance } from '@/composables/useBalance';
 
 export default defineComponent({
   name: 'BalanceBlock',
   setup() {
-    const balance = reactive({
-      amount: '1,250.00',
-      currency: 'USD'
+    const { 
+      balance, 
+      transactions, 
+      formattedAmount, 
+      loading, 
+      error, 
+      loadBalanceData 
+    } = useBalance();
+
+    const getTransactionType = (type) => {
+      return type === 'income' || type === 'bonus' || type === 'task' ? 'income' : 'outcome';
+    };
+
+    onMounted(() => {
+      loadBalanceData();
     });
-
-    const transactions = reactive([
-      { id: 1, description: 'Выполнение задания', amount: '+50.00', type: 'income', date: '20.01.2024' },
-      { id: 2, description: 'Вывод средств', amount: '-100.00', type: 'outcome', date: '18.01.2024' },
-      { id: 3, description: 'Бонус за активность', amount: '+25.00', type: 'income', date: '15.01.2024' }
-    ]);
-
-    const withdraw = () => {
-      console.log('Withdraw funds');
-    };
-
-    const deposit = () => {
-      console.log('Deposit funds');
-    };
 
     return {
       balance,
       transactions,
-      withdraw,
-      deposit
+      formattedAmount,
+      loading,
+      error,
+      withdraw: () => console.log('Withdraw'),
+      deposit: () => console.log('Deposit'),
+      getTransactionType,
+      loadBalanceData
     };
   }
 });
@@ -71,9 +103,92 @@ export default defineComponent({
   font-size: 1.3rem;
 }
 
-.balance-amount {
+/* Стили для загрузки */
+.loading {
   text-align: center;
+  padding: 20px;
+}
+
+.loading-spinner {
+  width: 30px;
+  height: 30px;
+  border: 3px solid rgba(255, 255, 255, 0.3);
+  border-top: 3px solid #25438B;
+  border-radius: 50%;
+  animation: spin 1s linear infinite;
+  margin: 0 auto 10px;
+}
+
+@keyframes spin {
+  0% { transform: rotate(0deg); }
+  100% { transform: rotate(360deg); }
+}
+
+.loading p {
+  color: rgba(255, 255, 255, 0.7);
+  font-size: 0.9rem;
+}
+
+/* Стили для ошибки */
+.error-message {
+  color: #f44336;
+  text-align: center;
+  padding: 20px;
+  background: rgba(244, 67, 54, 0.1);
+  border-radius: 8px;
+  border: 1px solid rgba(244, 67, 54, 0.3);
+}
+
+.retry-btn {
+  margin-top: 10px;
+  padding: 8px 16px;
+  background: #f44336;
+  color: white;
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+}
+
+.retry-btn:hover {
+  background: #d32f2f;
+}
+
+/* Заголовок баланса с кнопкой обновления */
+.balance-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
   margin-bottom: 30px;
+}
+
+.balance-amount {
+  text-align: left;
+}
+
+.refresh-btn {
+  background: rgba(255, 255, 255, 0.1);
+  border: 1px solid rgba(255, 255, 255, 0.3);
+  color: white;
+  padding: 8px;
+  border-radius: 50%;
+  cursor: pointer;
+  transition: all 0.3s ease;
+  font-size: 1.2rem;
+}
+
+.refresh-btn:hover:not(:disabled) {
+  background: rgba(255, 255, 255, 0.2);
+  transform: rotate(180deg);
+}
+
+.refresh-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.refresh-btn.small {
+  padding: 6px;
+  font-size: 1rem;
 }
 
 .amount {
@@ -120,10 +235,24 @@ export default defineComponent({
   box-shadow: 0 5px 15px rgba(37, 67, 139, 0.3);
 }
 
+/* Заголовок транзакций */
+.transaction-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 15px;
+}
+
 .transaction-history h4 {
   color: white;
-  margin-bottom: 15px;
   font-size: 1.1rem;
+  margin: 0;
+}
+
+.no-transactions {
+  text-align: center;
+  padding: 20px;
+  color: rgba(255, 255, 255, 0.5);
 }
 
 .transaction-item {
@@ -151,9 +280,11 @@ export default defineComponent({
 
 .transaction-amount.income {
   color: #4CAF50;
+  font-weight: 500;
 }
 
 .transaction-amount.outcome {
   color: #f44336;
+  font-weight: 500;
 }
 </style>

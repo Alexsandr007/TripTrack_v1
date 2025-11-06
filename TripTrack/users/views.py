@@ -7,7 +7,7 @@ from django.contrib.auth import authenticate, login
 import json
 
 # Импортируем кастомную модель
-from users.models import CustomUser
+from users.models import CustomUser, Transaction
 from .serializers import CustomUserRegistrationSerializer, CustomUserSerializer
 
 
@@ -374,3 +374,196 @@ class CustomUserLogoutAPIView(View):
         response["Access-Control-Allow-Methods"] = "POST, OPTIONS"
         response["Access-Control-Allow-Headers"] = "Content-Type, Authorization"
         return response
+    
+
+@method_decorator(csrf_exempt, name='dispatch')
+class UserBalanceAPIView(View):
+    """
+    API View для получения баланса пользователя
+    """
+    def get(self, request):
+        try:
+            print("=== ПОЛУЧЕНИЕ БАЛАНСА ПОЛЬЗОВАТЕЛЯ ===")
+            
+            # Получаем токен из заголовков
+            auth_header = request.headers.get('Authorization', '')
+            if not auth_header.startswith('Token '):
+                return JsonResponse({
+                    'success': False,
+                    'error': 'Требуется авторизация'
+                }, status=401)
+            
+            token = auth_header[6:]
+            token_obj = Token.objects.get(key=token)
+            user = token_obj.user
+            
+            print(f"Получение баланса для пользователя: {user.username}")
+            
+            # Баланс уже в модели пользователя, просто сериализуем
+            balance_data = {
+                'amount': str(user.balance_amount),
+                'currency': user.balance_currency,
+                'currency_display': user.get_balance_currency_display(),
+                'updated_at': user.balance_updated_at.strftime('%d.%m.%Y %H:%M')
+            }
+            
+            print(f"Баланс пользователя {user.username}: {user.balance_amount} {user.balance_currency}")
+            
+            return JsonResponse({
+                'success': True,
+                'balance': balance_data
+            })
+            
+        except Token.DoesNotExist:
+            return JsonResponse({
+                'success': False,
+                'error': 'Невалидный токен'
+            }, status=401)
+        except Exception as e:
+            print("Ошибка при получении баланса:", str(e))
+            import traceback
+            traceback.print_exc()
+            return JsonResponse({
+                'success': False,
+                'error': f'Ошибка сервера: {str(e)}'
+            }, status=500)
+
+
+@method_decorator(csrf_exempt, name='dispatch')
+class UserTransactionsAPIView(View):
+    """
+    API View для получения транзакций пользователя
+    """
+    def get(self, request):
+        try:
+            print("=== ПОЛУЧЕНИЕ ТРАНЗАКЦИЙ ПОЛЬЗОВАТЕЛЯ ===")
+            
+            # Получаем токен из заголовков
+            auth_header = request.headers.get('Authorization', '')
+            if not auth_header.startswith('Token '):
+                return JsonResponse({
+                    'success': False,
+                    'error': 'Требуется авторизация'
+                }, status=401)
+            
+            token = auth_header[6:]
+            token_obj = Token.objects.get(key=token)
+            user = token_obj.user
+            
+            # Получаем параметр limit из запроса (по умолчанию 3)
+            limit = int(request.GET.get('limit', 3))
+            
+            print(f"Получение {limit} транзакций для пользователя: {user.username}")
+            
+            # Получаем последние транзакции
+            transactions = Transaction.objects.filter(user=user).order_by('-created_at')[:limit]
+            
+            # Сериализуем данные транзакций
+            transactions_data = []
+            for transaction in transactions:
+                transaction_data = {
+                    'id': transaction.id,
+                    'amount': str(transaction.amount),
+                    'amount_display': f"+{transaction.amount}" if transaction.transaction_type in ['income', 'bonus', 'task'] else f"-{transaction.amount}",
+                    'currency': transaction.currency,
+                    'transaction_type': transaction.transaction_type,
+                    'type_display': transaction.get_transaction_type_display(),
+                    'description': transaction.description,
+                    'status': transaction.status,
+                    'date': transaction.created_at.strftime('%d.%m.%Y')
+                }
+                transactions_data.append(transaction_data)
+            
+            print(f"Найдено {len(transactions_data)} транзакций для пользователя {user.username}")
+            
+            return JsonResponse({
+                'success': True,
+                'transactions': transactions_data,
+                'total_count': len(transactions_data)
+            })
+            
+        except Token.DoesNotExist:
+            return JsonResponse({
+                'success': False,
+                'error': 'Невалидный токен'
+            }, status=401)
+        except Exception as e:
+            print("Ошибка при получении транзакций:", str(e))
+            import traceback
+            traceback.print_exc()
+            return JsonResponse({
+                'success': False,
+                'error': f'Ошибка сервера: {str(e)}'
+            }, status=500)
+
+
+@method_decorator(csrf_exempt, name='dispatch')
+class UserBalanceSummaryAPIView(View):
+    """
+    API View для получения сводной информации о балансе и транзакциях
+    """
+    def get(self, request):
+        try:
+            print("=== ПОЛУЧЕНИЕ СВОДНОЙ ИНФОРМАЦИИ О БАЛАНСЕ ===")
+            
+            # Получаем токен из заголовков
+            auth_header = request.headers.get('Authorization', '')
+            if not auth_header.startswith('Token '):
+                return JsonResponse({
+                    'success': False,
+                    'error': 'Требуется авторизация'
+                }, status=401)
+            
+            token = auth_header[6:]
+            token_obj = Token.objects.get(key=token)
+            user = token_obj.user
+            
+            print(f"Получение сводной информации для пользователя: {user.username}")
+            
+            # Получаем последние 3 транзакции
+            transactions = Transaction.objects.filter(user=user).order_by('-created_at')[:3]
+            
+            # Формируем данные баланса (теперь из полей пользователя)
+            balance_data = {
+                'amount': str(user.balance_amount),
+                'currency': user.balance_currency,
+                'currency_display': user.get_balance_currency_display(),
+                'updated_at': user.balance_updated_at.strftime('%d.%m.%Y %H:%M')
+            }
+            
+            # Формируем данные транзакций
+            transactions_data = []
+            for transaction in transactions:
+                transaction_data = {
+                    'id': transaction.id,
+                    'amount': str(transaction.amount),
+                    'amount_display': f"+{transaction.amount}" if transaction.transaction_type in ['income', 'bonus', 'task'] else f"-{transaction.amount}",
+                    'currency': transaction.currency,
+                    'type': transaction.transaction_type,
+                    'type_display': transaction.get_transaction_type_display(),
+                    'description': transaction.description,
+                    'date': transaction.created_at.strftime('%d.%m.%Y')
+                }
+                transactions_data.append(transaction_data)
+            
+            print(f"Сводная информация: баланс {user.balance_amount} {user.balance_currency}, {len(transactions_data)} транзакций")
+            
+            return JsonResponse({
+                'success': True,
+                'balance': balance_data,
+                'transactions': transactions_data
+            })
+            
+        except Token.DoesNotExist:
+            return JsonResponse({
+                'success': False,
+                'error': 'Невалидный токен'
+            }, status=401)
+        except Exception as e:
+            print("Ошибка при получении сводной информации:", str(e))
+            import traceback
+            traceback.print_exc()
+            return JsonResponse({
+                'success': False,
+                'error': f'Ошибка сервера: {str(e)}'
+            }, status=500)

@@ -1,11 +1,50 @@
 from django.contrib.auth.models import AbstractUser
 from django.db import models
+from django.core.validators import MinValueValidator
+from decimal import Decimal
 
 
-class CustomUserManager(models.Manager):
+from django.contrib.auth.models import AbstractUser, BaseUserManager
+from django.db import models
+from django.core.validators import MinValueValidator
+from decimal import Decimal
+
+
+class CustomUserManager(BaseUserManager):
     """
     Кастомный менеджер для пользователей с поиском без учета регистра
     """
+    use_in_migrations = True
+
+    def _create_user(self, username, email, password, **extra_fields):
+        """
+        Создает и сохраняет пользователя с указанным username, email и password.
+        """
+        if not username:
+            raise ValueError('The given username must be set')
+        email = self.normalize_email(email)
+        username = self.model.normalize_username(username)
+        user = self.model(username=username, email=email, **extra_fields)
+        user.set_password(password)
+        user.save(using=self._db)
+        return user
+
+    def create_user(self, username, email=None, password=None, **extra_fields):
+        extra_fields.setdefault('is_staff', False)
+        extra_fields.setdefault('is_superuser', False)
+        return self._create_user(username, email, password, **extra_fields)
+
+    def create_superuser(self, username, email=None, password=None, **extra_fields):
+        extra_fields.setdefault('is_staff', True)
+        extra_fields.setdefault('is_superuser', True)
+
+        if extra_fields.get('is_staff') is not True:
+            raise ValueError('Superuser must have is_staff=True.')
+        if extra_fields.get('is_superuser') is not True:
+            raise ValueError('Superuser must have is_superuser=True.')
+
+        return self._create_user(username, email, password, **extra_fields)
+
     def get_by_natural_key(self, username):
         return self.get(username__iexact=username)
     
@@ -18,9 +57,26 @@ class CustomUserManager(models.Manager):
         return self.filter(email__iexact=email).exists()
 
 
+
 class CustomUser(AbstractUser):
     mentor_login = models.CharField(max_length=100, blank=True)
     full_name = models.CharField(max_length=255, blank=True)
+    
+    # Поля баланса (добавляем прямо в модель пользователя)
+    balance_amount = models.DecimalField(
+        max_digits=10, 
+        decimal_places=2, 
+        default=0.00,
+        validators=[MinValueValidator(Decimal('0.00'))],
+        verbose_name='Баланс'
+    )
+    balance_currency = models.CharField(
+        max_length=3, 
+        default='RUB',
+        choices=[('RUB', 'Рубли'), ('USD', 'Доллары'), ('EUR', 'Евро')],
+        verbose_name='Валюта баланса'
+    )
+    balance_updated_at = models.DateTimeField(auto_now=True, verbose_name='Баланс обновлен')
     
     # Добавляем кастомный менеджер
     objects = CustomUserManager()
@@ -51,8 +107,64 @@ class CustomUser(AbstractUser):
             self.email = self.email.lower()
         super().save(*args, **kwargs)
     
+    @property
+    def balance(self):
+        """Property для удобного доступа к данным баланса"""
+        return {
+            'amount': self.balance_amount,
+            'currency': self.balance_currency,
+            'currency_display': self.get_balance_currency_display(),
+            'updated_at': self.balance_updated_at
+        }
+    
+    def get_balance_display(self):
+        """Форматированное отображение баланса"""
+        return f"{self.balance_amount} {self.get_balance_currency_display()}"
+    
     def __str__(self):
         return self.username
+
+
+class Transaction(models.Model):
+    """
+    Модель транзакции пользователя
+    """
+    TRANSACTION_TYPES = [
+        ('income', 'Пополнение'),
+        ('outcome', 'Вывод'),
+        ('bonus', 'Бонус'),
+        ('Pay', 'Выплата'),
+        ('transfer', 'Перевод'),
+    ]
+    
+    user = models.ForeignKey(
+        CustomUser, 
+        on_delete=models.CASCADE, 
+        related_name='transactions'
+    )
+    amount = models.DecimalField(
+        max_digits=10, 
+        decimal_places=2,
+        validators=[MinValueValidator(Decimal('0.01'))]
+    )
+    currency = models.CharField(max_length=3, default='RUB')
+    transaction_type = models.CharField(max_length=10, choices=TRANSACTION_TYPES)
+    description = models.CharField(max_length=255)
+    status = models.CharField(
+        max_length=10, 
+        default='completed',
+        choices=[('pending', 'В обработке'), ('completed', 'Завершено'), ('failed', 'Ошибка')]
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+    
+    class Meta:
+        db_table = 'user_transactions'
+        verbose_name = 'Транзакция'
+        verbose_name_plural = 'Транзакции'
+        ordering = ['-created_at']
+
+    def __str__(self):
+        return f"{self.user.username}: {self.amount} {self.currency} - {self.get_transaction_type_display()}"
     
 
 class UserMentorRelationship(models.Model):

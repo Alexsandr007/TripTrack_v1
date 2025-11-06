@@ -1,7 +1,7 @@
 from rest_framework import serializers
 from django.contrib.auth.password_validation import validate_password
 from django.core.exceptions import ValidationError as DjangoValidationError
-from users.models import CustomUser, UserMentorRelationship
+from users.models import CustomUser, Transaction
 
 
 class CustomUserSerializer(serializers.ModelSerializer):
@@ -9,13 +9,60 @@ class CustomUserSerializer(serializers.ModelSerializer):
     Сериализатор для данных кастомного пользователя
     """
     fullName = serializers.CharField(source='full_name', read_only=True)
+    balance = serializers.SerializerMethodField()
 
     class Meta:
         model = CustomUser
-        fields = ('id', 'username', 'email', 'fullName', 'mentor_login')
-        read_only_fields = ('id',)
+        fields = ('id', 'username', 'email', 'fullName', 'mentor_login', 'balance')
+
+    def get_balance(self, obj):
+        """Получаем данные баланса"""
+        return {
+            'amount': str(obj.balance_amount),
+            'currency': obj.balance_currency,
+            'currency_display': obj.get_balance_currency_display(),
+            'updated_at': obj.balance_updated_at.strftime('%d.%m.%Y %H:%M')
+        }
 
 
+class UserBalanceSerializer(serializers.ModelSerializer):
+    """
+    Сериализатор для баланса пользователя
+    """
+    amount = serializers.DecimalField(source='balance_amount', max_digits=10, decimal_places=2, read_only=True)
+    currency = serializers.CharField(source='balance_currency', read_only=True)
+    currency_display = serializers.CharField(source='get_balance_currency_display', read_only=True)
+    updated_at = serializers.DateTimeField(source='balance_updated_at', read_only=True)
+
+    class Meta:
+        model = CustomUser
+        fields = ('amount', 'currency', 'currency_display', 'updated_at')
+
+
+class TransactionSerializer(serializers.ModelSerializer):
+    """
+    Сериализатор для транзакций пользователя
+    """
+    amount_display = serializers.SerializerMethodField()
+    type_display = serializers.CharField(source='get_transaction_type_display', read_only=True)
+    date = serializers.DateTimeField(source='created_at', format='%d.%m.%Y')
+    
+    class Meta:
+        model = Transaction
+        fields = ('id', 'amount', 'amount_display', 'currency', 'transaction_type', 
+                 'type_display', 'description', 'status', 'date')
+    
+    def get_amount_display(self, obj):
+        """
+        Форматируем сумму с знаком +/-
+        """
+        if obj.transaction_type in ['income', 'bonus', 'task']:
+            return f"+{obj.amount}"
+        else:
+            return f"-{obj.amount}"
+
+
+# Остальные сериализаторы остаются без изменений
 class CustomUserRegistrationSerializer(serializers.Serializer):
     """
     Сериализатор для регистрации кастомного пользователя
@@ -114,12 +161,13 @@ class CustomUserRegistrationSerializer(serializers.Serializer):
         email_lower = validated_data['email'].lower()
         
         user = CustomUser.objects.create_user(
-            username=username_lower,  # Сохраняем в нижнем регистре
-            email=email_lower,        # Сохраняем в нижнем регистре
+            username=username_lower,
+            email=email_lower,
             password=validated_data['password'],
             first_name=validated_data['fullName'],
             full_name=validated_data['fullName'],
-            mentor_login=validated_data['Mentorlogin']
+            mentor_login=validated_data['Mentorlogin'],
+            # Баланс устанавливается автоматически по умолчанию (0.00 RUB)
         )
         
         print(f"Пользователь {user.username} зарегистрирован с ментором {mentor.username}")
