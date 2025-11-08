@@ -6,7 +6,8 @@ const globalState = reactive({
   balance: '0.00',
   notifications: [],
   onlineUsers: [],
-  transactions: []
+  transactions: [],
+  referralStats: null
 });
 
 export function useGlobalWebSocket() {
@@ -16,10 +17,15 @@ export function useGlobalWebSocket() {
 
   const getWebSocketUrl = () => {
     const token = localStorage.getItem('authToken');
-    if (!token) return null;
+    if (!token) {
+      console.warn('❌ No auth token found in localStorage');
+      return null;
+    }
 
     // Всегда используем порт 8000 для Django в разработке
-    return `ws://localhost:8000/ws/global/?token=${token}`;
+    const url = `ws://localhost:8000/ws/global/?token=${token}`;
+    console.log('🔗 WebSocket URL:', url);
+    return url;
   };
 
   const connect = () => {
@@ -32,7 +38,7 @@ export function useGlobalWebSocket() {
     }
 
     try {
-      console.log('🔄 Connecting to WebSocket:', wsUrl);
+      console.log('🔄 Connecting to WebSocket...');
       
       ws.value = new WebSocket(wsUrl);
 
@@ -60,7 +66,8 @@ export function useGlobalWebSocket() {
       ws.value.onclose = () => {
         connected.value = false;
         console.log('🔌 WebSocket closed');
-        setTimeout(connect, 5000);
+        // Переподключаемся через 3 секунды
+        setTimeout(connect, 3000);
       };
 
     } catch (error) {
@@ -70,13 +77,20 @@ export function useGlobalWebSocket() {
   };
 
   const handleGlobalMessage = (data) => {
+    console.log('🔄 Processing message type:', data.type);
+    
     switch (data.type) {
       case 'initial_data':
+        console.log('📦 Received initial data');
         if (data.user) globalState.user = data.user;
         if (data.balance) globalState.balance = data.balance;
         if (data.notifications) globalState.notifications = data.notifications;
         if (data.online_users) globalState.onlineUsers = data.online_users;
         if (data.recent_transactions) globalState.transactions = data.recent_transactions;
+        if (data.referral_stats) {
+          console.log('📊 Received referral stats:', data.referral_stats);
+          globalState.referralStats = data.referral_stats;
+        }
         break;
       case 'user_data':
         if (data.user) globalState.user = data.user;
@@ -88,31 +102,57 @@ export function useGlobalWebSocket() {
             globalState.user.balance = data.balance;
         }
         break;
-        
       case 'transaction_created':
         console.log('💳 New transaction received:', data.transaction);
         globalState.transactions.unshift(data.transaction);
-        // Ограничиваем количество транзакций
         if (globalState.transactions.length > 20) {
             globalState.transactions = globalState.transactions.slice(0, 20);
         }
         break;
+      case 'referral_stats':
+        console.log('📊 Referral stats received:', data.stats);
+        globalState.referralStats = data.stats;
+        break;
+      case 'referral_update':
+        console.log('📊 Referral update received:', data.referral_data);
+        if (globalState.referralStats) {
+          globalState.referralStats = {
+            ...globalState.referralStats,
+            ...data.referral_data
+          };
+        }
+        break;
+      default:
+        console.log('❓ Unknown message type:', data.type);
     }
   };
 
   const sendMessage = (type, payload = {}) => {
     if (ws.value && connected.value) {
-      ws.value.send(JSON.stringify({ type, ...payload }));
+      const message = JSON.stringify({ type, ...payload });
+      console.log('📤 Sending WebSocket message:', message);
+      ws.value.send(message);
+    } else {
+      console.warn('⚠️ Cannot send message - WebSocket not connected');
     }
   };
 
-  onMounted(connect);
-  onUnmounted(() => ws.value?.close());
+  onMounted(() => {
+    console.log('🏗️ useGlobalWebSocket mounted');
+    connect();
+  });
+
+  onUnmounted(() => {
+    if (ws.value) {
+      ws.value.close();
+    }
+  });
 
   return {
     globalState,
     connected,
     connectionError,
-    sendMessage
+    sendMessage,
+    connect
   };
 }

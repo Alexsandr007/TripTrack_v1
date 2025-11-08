@@ -3,6 +3,17 @@
     <div class="modal-overlay" @click="closeModal">
       <div class="modal-content" @click.stop>
         <h2>Регистрация</h2>
+        
+        <!-- Информация о реферале -->
+        <div v-if="referralInfo" class="referral-info">
+          <div class="referral-badge">
+            🎁 Реферальная регистрация
+          </div>
+          <p class="referral-text">
+            Вы регистрируетесь по приглашению от <strong>{{ referralInfo.mentor.login }}</strong>
+          </p>
+        </div>
+        
         <form @submit.prevent="handleSubmit">
           <div class="form-group">
             <label for="fullName">Полное имя</label>
@@ -60,19 +71,25 @@
             />
           </div>
           <div class="form-group">
-            <label for="Mentorlogin">Логин Ментора</label>
+            <label for="Mentorlogin">Логин Ментора *</label>
             <input
               id="Mentorlogin"
               v-model="form.Mentorlogin"
               type="text"
-              placeholder="Введите логин Ментора"
+              placeholder="Введите логин вашего ментора"
               required
-              :disabled="isLoading"
+              :disabled="isLoading || isMentorAutoFilled"
             />
+            <small v-if="isMentorAutoFilled" class="auto-fill-notice">
+              ✅ Ментор автоматически определен из реферальной ссылки
+            </small>
+            <small v-else class="field-hint">
+              Укажите логин пользователя, который будет вашим ментором и реферером
+            </small>
           </div>
           
           <!-- Показываем ошибки валидации -->
-          <div v-if="validationErrors" class="validation-errors">
+          <div v-if="validationErrors.length > 0" class="validation-errors">
             <p v-for="error in validationErrors" :key="error" class="error-message">
               {{ error }}
             </p>
@@ -94,8 +111,8 @@
 </template>
 
 <script>
-import { defineComponent, ref, reactive, inject } from 'vue';
-import { useRouter } from 'vue-router';
+import { defineComponent, ref, reactive, inject, onMounted } from 'vue';
+import { useRouter, useRoute } from 'vue-router';
 
 export default defineComponent({
   name: 'RegisterPage',
@@ -103,6 +120,7 @@ export default defineComponent({
   setup(props, { emit }) {
     const navigation = inject('navigation');
     const router = useRouter();
+    const route = useRoute();
     
     const form = reactive({
       fullName: '',
@@ -110,13 +128,83 @@ export default defineComponent({
       email: '',
       password: '',
       confirmPassword: '',
-      Mentorlogin: ''
+      Mentorlogin: '',
+      referral_code: ''
     });
     
     const errorMessage = ref('');
     const successMessage = ref('');
     const validationErrors = ref([]);
     const isLoading = ref(false);
+    const referralInfo = ref(null);
+    const isMentorAutoFilled = ref(false);
+
+    // Получение информации о менторе по реферальному коду
+    const getMentorByReferralCode = async (code) => {
+      try {
+        const API_BASE = process.env.NODE_ENV === 'development' 
+          ? 'http://127.0.0.1:8000' 
+          : '';
+        
+        console.log(`🔍 Получение информации о менторе по реферальному коду: ${code}`);
+        
+        const response = await fetch(`${API_BASE}/api/auth/get-mentor-by-ref/?ref=${code}`, {
+          method: 'GET',
+          headers: {
+            'Content-Type': 'application/json',
+          }
+        });
+
+        if (response.ok) {
+          const data = await response.json();
+          if (data.success) {
+            console.log('✅ Информация о менторе получена:', data.mentor);
+            return data.mentor;
+          } else {
+            console.warn('⚠️ API вернуло ошибку:', data.error);
+          }
+        } else {
+          console.warn('⚠️ Ошибка HTTP:', response.status);
+        }
+        return null;
+      } catch (error) {
+        console.error('❌ Ошибка при получении информации о менторе:', error);
+        return null;
+      }
+    };
+
+    // Проверка реферального параметра в URL при загрузке компонента
+    const checkReferralParameter = async () => {
+    const refCode = route.query.ref;
+    console.log('🔍 Проверка URL параметров:', route.query);
+    
+    if (refCode) {
+      console.log(`🎯 Обнаружен реферальный код в URL: ${refCode}`);
+      form.referral_code = refCode;
+      
+      // Получаем информацию о менторе/реферере
+      const mentorInfo = await getMentorByReferralCode(refCode);
+      if (mentorInfo) {
+        referralInfo.value = {
+          mentor: mentorInfo,
+          code: refCode
+        };
+        
+        // ✅ АВТОМАТИЧЕСКИ заполняем поле ментора логином реферера
+        // Ментор и реферер - это один человек!
+        form.Mentorlogin = mentorInfo.login;
+        isMentorAutoFilled.value = true;
+        
+        console.log(`✅ Поле ментора автоматически заполнено: ${mentorInfo.login}`);
+        console.log(`✅ Ментор и реферер: ${mentorInfo.login}`);
+      } else {
+        console.warn('⚠️ Реферальный код не найден или невалиден');
+        errorMessage.value = 'Реферальный код не найден. Пожалуйста, введите логин ментора вручную.';
+      }
+    } else {
+      console.log('ℹ️ Реферальный код не обнаружен в URL');
+    }
+  };
 
     const validateForm = () => {
       const errors = [];
@@ -147,38 +235,48 @@ export default defineComponent({
       isLoading.value = true;
 
       try {
-        // Добавляем базовый URL для разработки
         const API_BASE = process.env.NODE_ENV === 'development' 
           ? 'http://127.0.0.1:8000' 
           : '';
         
         console.log('=== НАЧАЛО РЕГИСТРАЦИИ ===');
-        console.log('Отправка данных на:', `${API_BASE}/api/auth/register/`);
-        console.log('Данные формы:', { ...form });
+        
+        // Подготавливаем данные для отправки
+        const registrationData = {
+          fullName: form.fullName,
+          login: form.login,
+          email: form.email,
+          password: form.password,
+          confirmPassword: form.confirmPassword,
+          Mentorlogin: form.Mentorlogin
+        };
+        
+        // Добавляем реферальный код, если он есть
+        if (form.referral_code) {
+          registrationData.referral_code = form.referral_code;
+          console.log(`🎁 Отправка с реферальным кодом: ${form.referral_code}`);
+        }
+        
+        console.log('Данные для регистрации:', { 
+          ...registrationData,
+          password: '***', // Не логируем пароль
+          confirmPassword: '***'
+        });
         
         const response = await fetch(`${API_BASE}/api/auth/register/`, {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
           },
-          body: JSON.stringify({
-            fullName: form.fullName,
-            login: form.login,
-            email: form.email,
-            password: form.password,
-            confirmPassword: form.confirmPassword,
-            Mentorlogin: form.Mentorlogin
-          })
+          body: JSON.stringify(registrationData)
         });
 
         console.log('Статус ответа:', response.status);
-        console.log('Заголовки ответа:', Object.fromEntries(response.headers.entries()));
 
         // Проверяем Content-Type перед парсингом JSON
         const contentType = response.headers.get('content-type');
         
         if (!contentType || !contentType.includes('application/json')) {
-          // Если сервер вернул не JSON, значит что-то не так с API
           const textResponse = await response.text();
           console.error('Server returned non-JSON response:', textResponse.substring(0, 500));
           throw new Error('Сервер вернул некорректный ответ. Проверьте настройки API.');
@@ -188,39 +286,29 @@ export default defineComponent({
         console.log('Ответ от сервера:', data);
 
         if (response.ok && data.success) {
-          successMessage.value = data.message || 'Регистрация успешна!';
+          // Добавляем информацию о реферале в сообщение об успехе
+          let successMsg = data.message || 'Регистрация успешна!';
+          if (data.referral_info) {
+            successMsg += ` Вы зарегистрированы по приглашению от ${data.referral_info.referred_by}.`;
+          }
+          successMessage.value = successMsg;
           
-          // ВАЖНО: Сохраняем токен и данные пользователя
-          console.log('Сохранение данных в localStorage...');
-          
+          // Сохраняем токен и данные пользователя
           if (data.token) {
             localStorage.setItem('authToken', data.token);
-            console.log('✅ Токен сохранен:', data.token);
-          } else {
-            console.warn('⚠️ Токен не получен от сервера');
+            console.log('✅ Токен сохранен');
           }
           
           if (data.user) {
             localStorage.setItem('user', JSON.stringify(data.user));
-            console.log('✅ Данные пользователя сохранены:', data.user);
-          } else {
-            console.warn('⚠️ Данные пользователя не получены от сервера');
+            console.log('✅ Данные пользователя сохранены');
           }
-          
-          // Проверяем что данные действительно сохранились
-          console.log('Проверка localStorage после сохранения:');
-          console.log('authToken:', localStorage.getItem('authToken'));
-          console.log('user:', localStorage.getItem('user'));
           
           // Очищаем форму
           Object.keys(form).forEach(key => form[key] = '');
           
-          console.log('=== УСПЕШНАЯ РЕГИСТРАЦИЯ ===');
-          console.log('Перенаправление на /profile через 1.5 секунды...');
-          
           // Перенаправляем на страницу профиля через 1.5 секунды
           setTimeout(() => {
-            console.log('Выполняется перенаправление на /profile');
             router.push('/profile');
             emit('register-success', data.user);
           }, 1500);
@@ -232,7 +320,6 @@ export default defineComponent({
           if (data.errors) {
             const serverErrors = [];
             for (const field in data.errors) {
-              // Преобразуем ошибки Django в читаемый формат
               if (Array.isArray(data.errors[field])) {
                 serverErrors.push(...data.errors[field]);
               } else {
@@ -248,14 +335,7 @@ export default defineComponent({
         }
       } catch (error) {
         console.error('Registration error:', error);
-        
-        if (error.message.includes('Сервер вернул некорректный ответ')) {
-          errorMessage.value = error.message;
-        } else if (error.message.includes('JSON')) {
-          errorMessage.value = 'Проблема с API сервером. Проверьте доступность эндпоинта /api/auth/register/';
-        } else {
-          errorMessage.value = 'Ошибка соединения с сервером. Проверьте подключение к интернету.';
-        }
+        errorMessage.value = 'Ошибка соединения с сервером. Проверьте подключение к интернету.';
       } finally {
         isLoading.value = false;
       }
@@ -269,12 +349,20 @@ export default defineComponent({
       emit('close');
     };
 
+    // Проверяем реферальный параметр при загрузке компонента
+    onMounted(() => {
+      console.log('🏗️ RegisterPage mounted');
+      checkReferralParameter();
+    });
+
     return {
       form,
       errorMessage,
       successMessage,
       validationErrors,
       isLoading,
+      referralInfo,
+      isMentorAutoFilled,
       handleSubmit,
       goToLogin,
       closeModal,
@@ -285,6 +373,91 @@ export default defineComponent({
 </script>
 
 <style scoped>
+.referral-info {
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  color: white;
+  padding: 15px;
+  border-radius: 8px;
+  margin-bottom: 20px;
+  text-align: center;
+}
+
+.referral-badge {
+  background: rgba(255, 255, 255, 0.2);
+  padding: 5px 10px;
+  border-radius: 20px;
+  font-size: 12px;
+  font-weight: bold;
+  display: inline-block;
+  margin-bottom: 8px;
+}
+
+.referral-text {
+  margin: 0;
+  font-size: 14px;
+}
+
+.auto-fill-notice {
+  color: #667eea;
+  font-style: italic;
+  margin-top: 5px;
+  display: block;
+}
+
+.referral-info {
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  color: white;
+  padding: 15px;
+  border-radius: 8px;
+  margin-bottom: 20px;
+  text-align: center;
+}
+
+.referral-badge {
+  background: rgba(255, 255, 255, 0.2);
+  padding: 5px 10px;
+  border-radius: 20px;
+  font-size: 12px;
+  font-weight: bold;
+  display: inline-block;
+  margin-bottom: 8px;
+}
+
+.referral-text {
+  margin: 0;
+  font-size: 14px;
+}
+
+.auto-fill-notice {
+  color: #667eea;
+  font-style: italic;
+  margin-top: 5px;
+  display: block;
+}
+
+.validation-errors {
+  background: #fee;
+  border: 1px solid #fcc;
+  border-radius: 4px;
+  padding: 10px;
+  margin-bottom: 15px;
+}
+
+.error-message {
+  color: #c33;
+  margin: 5px 0;
+  font-size: 14px;
+}
+
+.success-message {
+  background: #efe;
+  border: 1px solid #cfc;
+  border-radius: 4px;
+  padding: 10px;
+  margin-bottom: 15px;
+  color: #363;
+}
+
 /* Стили остаются без изменений */
 .success-message {
   color: #4CAF50;

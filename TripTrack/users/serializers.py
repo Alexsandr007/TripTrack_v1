@@ -62,7 +62,6 @@ class TransactionSerializer(serializers.ModelSerializer):
             return f"-{obj.amount}"
 
 
-# Остальные сериализаторы остаются без изменений
 class CustomUserRegistrationSerializer(serializers.Serializer):
     """
     Сериализатор для регистрации кастомного пользователя
@@ -101,6 +100,16 @@ class CustomUserRegistrationSerializer(serializers.Serializer):
         required=True,
         error_messages={'required': 'Логин ментора обязателен'}
     )
+    referral_code = serializers.CharField(
+        write_only=True,
+        required=False, 
+        allow_blank=True,
+        allow_null=True
+    )
+
+    class Meta:
+        model = CustomUser
+        fields = ('fullName', 'login', 'email', 'password', 'confirmPassword', 'Mentorlogin', 'referral_code')
 
     def validate(self, attrs):
         # Проверка совпадения паролей
@@ -146,30 +155,99 @@ class CustomUserRegistrationSerializer(serializers.Serializer):
                 'Mentorlogin': [f'Ментор с логином "{mentor_login}" не существует']
             })
 
+        # ВАЛИДАЦИЯ РЕФЕРАЛЬНОГО КОДА - ОСНОВНАЯ ЛОГИКА
+        referral_code = attrs.get('referral_code', '').strip()
+        
+        if referral_code:
+            # Проверяем существование реферального кода
+            try:
+                referring_user = CustomUser.objects.get(referral_code=referral_code)
+            except CustomUser.DoesNotExist:
+                raise serializers.ValidationError({
+                    'referral_code': [f'Реферальный код "{referral_code}" не найден']
+                })
+            
+            # Проверяем, что реферер не регистрирует сам себя
+            username_lower = attrs['login'].lower()
+            if referring_user.username.lower() == username_lower:
+                raise serializers.ValidationError({
+                    'referral_code': ['Нельзя использовать собственный реферальный код']
+                })
+            
+            # ✅ АВТОМАТИЧЕСКИ устанавливаем реферера как ментора!
+            # Ментор и реферер - это один человек
+            attrs['Mentorlogin'] = referring_user.username
+            attrs['referring_user'] = referring_user
+            
+            print(f"✅ Автоматически установлен ментор: {referring_user.username}")
+
+        else:
+            # Если нет реферального кода, проверяем существование ментора
+            mentor_login = attrs['Mentorlogin']
+            mentor_login_lower = mentor_login.lower()
+            
+            if not CustomUser.objects.filter(username__iexact=mentor_login_lower).exists():
+                raise serializers.ValidationError({
+                    'Mentorlogin': [f'Ментор с логином "{mentor_login}" не существует']
+                })
+
         return attrs
 
     def create(self, validated_data):
         """
-        Создание кастомного пользователя
+        Создание кастомного пользователя с поддержкой реферальной системы
         """
         # Получаем ментора из базы данных (без учета регистра)
         mentor_login = validated_data['Mentorlogin']
         mentor = CustomUser.objects.get(username__iexact=mentor_login.lower())
         
+        # Получаем реферера, если есть (это тот же человек что и ментор!)
+        referring_user = validated_data.pop('referring_user', None)
+        referral_code = validated_data.pop('referral_code', None)
+        
         # Приводим логин и email к нижнему регистру для хранения
         username_lower = validated_data['login'].lower()
         email_lower = validated_data['email'].lower()
         
+        # Создаем пользователя
         user = CustomUser.objects.create_user(
             username=username_lower,
             email=email_lower,
             password=validated_data['password'],
             first_name=validated_data['fullName'],
             full_name=validated_data['fullName'],
-            mentor_login=validated_data['Mentorlogin'],
-            # Баланс устанавливается автоматически по умолчанию (0.00 RUB)
+            mentor_login=mentor_login,
         )
         
-        print(f"Пользователь {user.username} зарегистрирован с ментором {mentor.username}")
+        # Устанавливаем реферера (это тот же человек что и ментор!)
+        if referring_user:
+            user.referred_by = referring_user
+            user.save()
+            
+            # Обновляем счетчик рефералов у реферера/ментора
+            referring_user.refresh_from_db()
+            referring_user.referral_count = referring_user.referrals.count()
+            referring_user.save()
+            
+            print(f"✅ Пользователь {user.username} зарегистрирован:")
+            print(f"   - Ментор/Реферер: {referring_user.username}")
+            print(f"   - Ученик/Реферал: {user.username}")
+            print(f"   - Новое количество рефералов: {referring_user.referral_count}")
+            
+            # Отправляем WebSocket уведомление рефереру/ментору
+            try:
+                from .websocket_utils import send_referral_update
+                send_referral_update(referring_user.id, {
+                    'referral_count': referring_user.referral_count,
+                    'active_referrals_count': referring_user.active_referrals_count,
+                    'new_referral': {
+                        'username': user.username,
+                        'full_name': user.full_name,
+                        'registration_date': user.date_joined.isoformat()
+                    }
+                })
+                print(f"📨 WebSocket уведомление отправлено ментору {referring_user.username}")
+            except Exception as e:
+                print(f"❌ Ошибка отправки WebSocket уведомления: {e}")
         
         return user

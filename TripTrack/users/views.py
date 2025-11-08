@@ -9,7 +9,7 @@ import json
 # Импортируем кастомную модель
 from users.models import CustomUser, Transaction
 from .serializers import CustomUserRegistrationSerializer, CustomUserSerializer
-
+from .websocket_utils import send_referral_update
 
 @method_decorator(csrf_exempt, name='dispatch')
 class CustomUserRegistrationAPIView(View):
@@ -25,6 +25,20 @@ class CustomUserRegistrationAPIView(View):
             print("Тело запроса:", body)
             data = json.loads(body)
             print("Данные:", data)
+
+            # Обработка реферального кода
+            referral_code = data.get('referral_code', '').strip()
+            referring_user = None
+            if referral_code:
+                print(f"Обработка реферального кода: {referral_code}")
+                try:
+                    referring_user = CustomUser.objects.get(referral_code=referral_code)
+                    print(f"Найден реферер: {referring_user.username}")
+                    # Сохраняем объект реферера для передачи в сериализатор
+                    data['referring_user'] = referring_user
+                except CustomUser.DoesNotExist:
+                    print(f"Реферальный код не найден: {referral_code}")
+                    # Не прерываем регистрацию, просто игнорируем неверный код
             
             # Дополнительные проверки перед сериализатором
             errors = {}
@@ -91,6 +105,37 @@ class CustomUserRegistrationAPIView(View):
             user = serializer.save()
             print("Пользователь создан:", user.id, user.username)
             
+            # ОБРАБОТКА РЕФЕРАЛЬНОЙ СИСТЕМЫ ПОСЛЕ СОЗДАНИЯ ПОЛЬЗОВАТЕЛЯ
+            if referring_user:
+                try:
+                    # Обновляем счетчик рефералов у реферера
+                    referring_user.refresh_from_db()
+                    referring_user.referral_count = referring_user.referrals.count()
+                    referring_user.save()
+                    
+                    print(f"✅ Реферал зарегистрирован: {user.username} -> {referring_user.username}")
+                    print(f"📊 Новое количество рефералов у {referring_user.username}: {referring_user.referral_count}")
+                    
+                    # Отправляем WebSocket уведомление рефереру
+
+                    send_referral_update(referring_user.id, {
+                        'referral_count': referring_user.referral_count,  # Это станет total_referrals
+                        'active_referrals_count': referring_user.active_referrals_count,  # Это станет active_referrals
+                        'referral_balance': str(referring_user.referral_balance),
+                        'referral_code': referring_user.referral_code,
+                        'referral_link': f"http://localhost:8080/register?ref={referring_user.referral_code}",
+                        'new_referral': {
+                            'username': user.username,
+                            'full_name': user.full_name,
+                            'registration_date': user.date_joined.isoformat()
+                        }
+                    })
+                    print(f"📨 WebSocket уведомление отправлено рефереру {referring_user.username}")
+                    
+                except Exception as e:
+                    print(f"❌ Ошибка при обработке реферальной системы: {e}")
+                    # Не прерываем регистрацию из-за ошибки реферальной системы
+            
             # Создаем токен
             token = Token.objects.create(user=user)
             print("Токен создан:", token.key)
@@ -99,12 +144,21 @@ class CustomUserRegistrationAPIView(View):
             login(request, user)
             print("Пользователь залогинен")
             
+            # Формируем ответ с информацией о реферале
             response_data = {
                 'success': True,
                 'message': 'Регистрация успешна!',
                 'token': token.key,
                 'user': CustomUserSerializer(user).data
             }
+            
+            # Добавляем информацию о реферале в ответ, если есть
+            if referring_user:
+                response_data['referral_info'] = {
+                    'referred_by': referring_user.username,
+                    'referral_code_used': referral_code
+                }
+            
             print("Ответ:", response_data)
             
             response = JsonResponse(response_data, status=201)
@@ -138,6 +192,46 @@ class CustomUserRegistrationAPIView(View):
         response["Access-Control-Allow-Headers"] = "Content-Type"
         return response
 
+
+# Добавьте новый endpoint для реферальной статистики
+@method_decorator(csrf_exempt, name='dispatch')
+class ReferralStatsAPIView(View):
+    def get(self, request):
+        try:
+            auth_header = request.headers.get('Authorization', '')
+            if not auth_header.startswith('Token '):
+                return JsonResponse({
+                    'success': False,
+                    'error': 'Требуется авторизация'
+                }, status=401)
+            
+            token = auth_header[6:]
+            token_obj = Token.objects.get(key=token)
+            user = token_obj.user
+            
+            stats = {
+                'total_referrals': user.referral_count,
+                'active_referrals': user.active_referrals_count,
+                'referral_balance': str(user.referral_balance),
+                'referral_code': user.referral_code,
+                'referral_link': f"https://t.me/yourbot?start=ref{user.referral_code}"
+            }
+            
+            return JsonResponse({
+                'success': True,
+                'stats': stats
+            })
+            
+        except Token.DoesNotExist:
+            return JsonResponse({
+                'success': False,
+                'error': 'Невалидный токен'
+            }, status=401)
+        except Exception as e:
+            return JsonResponse({
+                'success': False,
+                'error': str(e)
+            }, status=500)
 
 @method_decorator(csrf_exempt, name='dispatch')
 class VerifyAuthAPIView(View):
@@ -736,3 +830,195 @@ class CreateTransactionAPIView(View):
         response["Access-Control-Allow-Methods"] = "POST, OPTIONS"
         response["Access-Control-Allow-Headers"] = "Content-Type, Authorization"
         return response
+    
+
+# Добавьте после существующих классов в users/views.py
+
+@method_decorator(csrf_exempt, name='dispatch')
+class ReferralStatsAPIView(View):
+    """
+    API View для получения реферальной статистики
+    """
+    def get(self, request):
+        try:
+            print("=== ПОЛУЧЕНИЕ РЕФЕРАЛЬНОЙ СТАТИСТИКИ ===")
+            
+            # Получаем токен из заголовков
+            auth_header = request.headers.get('Authorization', '')
+            if not auth_header.startswith('Token '):
+                return JsonResponse({
+                    'success': False,
+                    'error': 'Требуется авторизация'
+                }, status=401)
+            
+            token = auth_header[6:]
+            token_obj = Token.objects.get(key=token)
+            user = token_obj.user
+            
+            print(f"Получение реферальной статистики для пользователя: {user.username}")
+            
+            # Получаем базовую статистику
+            total_referrals = getattr(user, 'referral_count', 0)
+            active_referrals = getattr(user, 'active_referrals_count', 0)
+            referral_balance = str(getattr(user, 'referral_balance', '0.00'))
+            referral_code = getattr(user, 'referral_code', '')
+            
+            # Генерируем реферальную ссылку
+            referral_link = f"https://t.me/yourbot?start=ref{referral_code}" if referral_code else ""
+            
+            # Получаем информацию о последних рефералах
+            recent_referrals = []
+            if hasattr(user, 'referrals'):
+                referrals = user.referrals.all().order_by('-date_joined')[:5]
+                recent_referrals = [{
+                    'username': ref.username,
+                    'full_name': ref.full_name or ref.first_name or ref.username,
+                    'email': ref.email,
+                    'registration_date': ref.date_joined.isoformat(),
+                    'is_active': ref.is_active
+                } for ref in referrals]
+            
+            stats = {
+                'total_referrals': total_referrals,
+                'active_referrals': active_referrals,
+                'referral_balance': referral_balance,
+                'referral_code': referral_code,
+                'referral_link': referral_link,
+                'recent_referrals': recent_referrals
+            }
+            
+            print(f"Реферальная статистика для {user.username}: {total_referrals} рефералов")
+            
+            return JsonResponse({
+                'success': True,
+                'stats': stats
+            })
+            
+        except Token.DoesNotExist:
+            return JsonResponse({
+                'success': False,
+                'error': 'Невалидный токен'
+            }, status=401)
+        except Exception as e:
+            print("Ошибка при получении реферальной статистики:", str(e))
+            import traceback
+            traceback.print_exc()
+            return JsonResponse({
+                'success': False,
+                'error': f'Ошибка сервера: {str(e)}'
+            }, status=500)
+
+    def options(self, request, *args, **kwargs):
+        """Обработка CORS preflight"""
+        response = JsonResponse({"status": "ok"})
+        response["Access-Control-Allow-Origin"] = "*"
+        response["Access-Control-Allow-Methods"] = "GET, OPTIONS"
+        response["Access-Control-Allow-Headers"] = "Content-Type, Authorization"
+        return response
+
+
+@method_decorator(csrf_exempt, name='dispatch')
+class ReferralLinkAPIView(View):
+    """
+    API View для получения реферальной ссылки
+    """
+    def get(self, request):
+        try:
+            print("=== ПОЛУЧЕНИЕ РЕФЕРАЛЬНОЙ ССЫЛКИ ===")
+            
+            # Получаем токен из заголовков
+            auth_header = request.headers.get('Authorization', '')
+            if not auth_header.startswith('Token '):
+                return JsonResponse({
+                    'success': False,
+                    'error': 'Требуется авторизация'
+                }, status=401)
+            
+            token = auth_header[6:]
+            token_obj = Token.objects.get(key=token)
+            user = token_obj.user
+            
+            print(f"Получение реферальной ссылки для пользователя: {user.username}")
+            
+            referral_code = getattr(user, 'referral_code', '')
+            if not referral_code:
+                # Генерируем код, если его нет
+                user.save()  # Это вызовет генерацию кода в методе save()
+                referral_code = user.referral_code
+            
+            # Генерируем реферальную ссылку
+            referral_link = f"https://t.me/yourbot?start=ref{referral_code}"
+            
+            print(f"Реферальная ссылка для {user.username}: {referral_link}")
+            
+            return JsonResponse({
+                'success': True,
+                'referral_link': referral_link,
+                'referral_code': referral_code
+            })
+            
+        except Token.DoesNotExist:
+            return JsonResponse({
+                'success': False,
+                'error': 'Невалидный токен'
+            }, status=401)
+        except Exception as e:
+            print("Ошибка при получении реферальной ссылки:", str(e))
+            import traceback
+            traceback.print_exc()
+            return JsonResponse({
+                'success': False,
+                'error': f'Ошибка сервера: {str(e)}'
+            }, status=500)
+
+    def options(self, request, *args, **kwargs):
+        """Обработка CORS preflight"""
+        response = JsonResponse({"status": "ok"})
+        response["Access-Control-Allow-Origin"] = "*"
+        response["Access-Control-Allow-Methods"] = "GET, OPTIONS"
+        response["Access-Control-Allow-Headers"] = "Content-Type, Authorization"
+        return response
+
+
+# users/views.py
+@method_decorator(csrf_exempt, name='dispatch')
+class GetMentorByReferralCodeView(View):
+    """
+    API для получения информации о менторе по реферальному коду
+    """
+    def get(self, request):
+        try:
+            ref_code = request.GET.get('ref', '').strip()
+            print(f"🔍 GetMentorByReferralCodeView: received ref_code = '{ref_code}'")
+            
+            if not ref_code:
+                return JsonResponse({
+                    'success': False,
+                    'error': 'Реферальный код не указан'
+                }, status=400)
+            
+            try:
+                mentor = CustomUser.objects.get(referral_code=ref_code)
+                print(f"✅ Найден ментор: {mentor.username} с кодом {ref_code}")
+                
+                return JsonResponse({
+                    'success': True,
+                    'mentor': {
+                        'login': mentor.username,
+                        'full_name': mentor.full_name or mentor.first_name or mentor.username,
+                        'email': mentor.email
+                    }
+                })
+            except CustomUser.DoesNotExist:
+                print(f"❌ Ментор с кодом {ref_code} не найден")
+                return JsonResponse({
+                    'success': False,
+                    'error': 'Реферальный код не найден'
+                }, status=404)
+                
+        except Exception as e:
+            print(f"❌ Ошибка в GetMentorByReferralCodeView: {e}")
+            return JsonResponse({
+                'success': False,
+                'error': str(e)
+            }, status=500)

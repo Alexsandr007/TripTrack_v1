@@ -2,7 +2,8 @@ from django.contrib.auth.models import AbstractUser
 from django.db import models
 from django.core.validators import MinValueValidator
 from decimal import Decimal
-
+import secrets
+import string
 
 from django.contrib.auth.models import AbstractUser, BaseUserManager
 from django.db import models
@@ -99,20 +100,43 @@ class CustomUser(AbstractUser):
         related_name='customuser_set',
         related_query_name='user',
     )
+    referral_code = models.CharField(max_length=20, blank=True, null=True)
+    referred_by = models.ForeignKey(
+        'self', 
+        on_delete=models.SET_NULL, 
+        null=True, 
+        blank=True,
+        related_name='referrals'
+    )
+    referral_count = models.IntegerField(default=0)
+    referral_balance = models.DecimalField(max_digits=10, decimal_places=2, default=0)
     
     def save(self, *args, **kwargs):
-        # Проверяем, менялся ли баланс
+        if not self.referral_code:
+            self.referral_code = self.generate_referral_code()
+            print(f"✅ Generated referral code for {self.username}: {self.referral_code}")
+
         balance_changed = False
         if self.pk:
             old_instance = CustomUser.objects.get(pk=self.pk)
             balance_changed = old_instance.balance_amount != self.balance_amount
-        
         super().save(*args, **kwargs)
-        
-        # Отправляем уведомление если баланс изменился
+
         if balance_changed:
             print(f"🔄 Balance changed in model save: {self.balance_amount}")
             send_balance_update(self.id, str(self.balance_amount))
+
+    
+    def generate_referral_code(self):
+            """Генерация уникального реферального кода"""
+            while True:
+                code = ''.join(secrets.choice(string.ascii_uppercase + string.digits) for _ in range(8))
+                if not CustomUser.objects.filter(referral_code=code).exists():
+                    return code
+    
+    @property
+    def active_referrals_count(self):
+        return self.referrals.filter(is_active=True).count()
     
     @property
     def balance(self):

@@ -1,4 +1,4 @@
-# users/consumers.py
+# TripTrack/consumers.py
 import json
 from channels.generic.websocket import AsyncWebsocketConsumer
 from channels.db import database_sync_to_async
@@ -7,6 +7,10 @@ class GlobalConsumer(AsyncWebsocketConsumer):
     async def connect(self):
         """Подключение WebSocket"""
         print("🔌 WebSocket connection attempt...")
+        
+        # Инициализируем user_group до аутентификации
+        self.user_group = None
+        self.user = None
         
         self.user = await self.authenticate_user()
         if not self.user or self.user.is_anonymous:
@@ -34,11 +38,12 @@ class GlobalConsumer(AsyncWebsocketConsumer):
     async def disconnect(self, close_code):
         """Отключение WebSocket"""
         print(f"🔌 WebSocket disconnected: {close_code}")
-        # Удаляем из группы
-        await self.channel_layer.group_discard(
-            self.user_group,
-            self.channel_name
-        )
+        # Удаляем из группы только если она была создана
+        if hasattr(self, 'user_group') and self.user_group:
+            await self.channel_layer.group_discard(
+                self.user_group,
+                self.channel_name
+            )
     
     async def receive(self, text_data):
         """Обработка входящих сообщений"""
@@ -51,6 +56,8 @@ class GlobalConsumer(AsyncWebsocketConsumer):
                 await self.handle_get_user_data(data)
             elif message_type == 'ping':
                 await self.handle_ping(data)
+            elif message_type == 'get_referral_stats':
+                await self.handle_get_referral_stats(data)
             else:
                 print(f"❌ Unknown message type: {message_type}")
                 
@@ -72,6 +79,59 @@ class GlobalConsumer(AsyncWebsocketConsumer):
             'timestamp': data.get('timestamp')
         }))
     
+    async def handle_get_referral_stats(self, data):
+        """Обработка запроса реферальной статистики"""
+        print("📊 Handling get_referral_stats request")
+        referral_stats = await self.get_referral_stats()
+        await self.send(text_data=json.dumps({
+            'type': 'referral_stats',
+            'stats': referral_stats
+        }))
+        print("✅ Referral stats sent")
+
+    @database_sync_to_async
+    def get_referral_stats(self):
+        """Получение реферальной статистики"""
+        if not self.user:
+            return {}
+        
+        try:
+            # Принудительно генерируем referral_code если его нет
+            if not self.user.referral_code:
+                self.user.save()  # Это вызовет генерацию кода
+                print(f"🔄 Generated referral code for {self.username}: {self.user.referral_code}")
+            
+            # Получаем базовую статистику
+            total_referrals = getattr(self.user, 'referral_count', 0)
+            active_referrals = getattr(self.user, 'active_referrals_count', 0)
+            referral_balance = str(getattr(self.user, 'referral_balance', '0.00'))
+            referral_code = getattr(self.user, 'referral_code', '')
+            
+            # Генерируем реферальную ссылку
+            referral_link = f"http://localhost:8080/register?ref={referral_code}" if referral_code else ""
+            
+            print(f"📊 Referral stats for {self.user.username}: code={referral_code}, referrals={total_referrals}")
+            
+            return {
+                'total_referrals': total_referrals,
+                'active_referrals': active_referrals,
+                'referral_balance': referral_balance,
+                'referral_code': referral_code,
+                'referral_link': referral_link,
+                'recent_referrals': []
+            }
+            
+        except Exception as e:
+            print(f"❌ Error getting referral stats: {e}")
+            return {
+                'total_referrals': 0,
+                'active_referrals': 0,
+                'referral_balance': '0.00',
+                'referral_code': '',
+                'referral_link': '',
+                'recent_referrals': []
+            }
+    
     async def send_initial_data(self):
         """Отправка начальных данных при подключении"""
         initial_data = {
@@ -81,6 +141,7 @@ class GlobalConsumer(AsyncWebsocketConsumer):
             'notifications': [],
             'online_users': [],
             'recent_transactions': await self.get_recent_transactions(),
+            'referral_stats': await self.get_referral_stats(),  # Добавляем реферальную статистику
         }
         
         await self.send(text_data=json.dumps(initial_data))
@@ -102,6 +163,14 @@ class GlobalConsumer(AsyncWebsocketConsumer):
         await self.send(text_data=json.dumps({
             'type': 'transaction_created',
             'transaction': event['transaction']
+        }))
+    
+    async def referral_update(self, event):
+        """Обработка обновления реферальной статистики от сервера"""
+        print(f"📊 Received referral update: {event['referral_data']}")
+        await self.send(text_data=json.dumps({
+            'type': 'referral_update',
+            'referral_data': event['referral_data']
         }))
     
     # ===== ВСПОМОГАТЕЛЬНЫЕ МЕТОДЫ =====
@@ -139,13 +208,14 @@ class GlobalConsumer(AsyncWebsocketConsumer):
             'id': self.user.id,
             'username': self.user.username,
             'email': self.user.email,
-            'balance': str(getattr(self.user, 'balance_amount', '100.00')),
+            'balance': str(getattr(self.user, 'balance_amount', '0.00')),
             'balance_currency': getattr(self.user, 'balance_currency', 'USD'),
+            'referral_code': getattr(self.user, 'referral_code', ''),
         }
     
     @database_sync_to_async
     def get_user_balance(self):
-        return str(getattr(self.user, 'balance_amount', '100.00'))
+        return str(getattr(self.user, 'balance_amount', '0.00'))
     
     @database_sync_to_async
     def get_recent_transactions(self):
@@ -153,11 +223,17 @@ class GlobalConsumer(AsyncWebsocketConsumer):
         if not hasattr(self.user, 'transactions'):
             return []
         
-        transactions = self.user.transactions.all().order_by('-created_at')[:5]
-        return [{
-            'id': t.id,
-            'amount': str(t.amount),
-            'type': t.transaction_type,
-            'description': t.description,
-            'date': t.created_at.isoformat()
-        } for t in transactions]
+        try:
+            transactions = self.user.transactions.all().order_by('-created_at')[:5]
+            return [{
+                'id': t.id,
+                'amount': str(t.amount),
+                'type': t.transaction_type,
+                'description': t.description,
+                'date': t.created_at.isoformat()
+            } for t in transactions]
+        except Exception as e:
+            print(f"❌ Error getting transactions: {e}")
+            return []
+    
+ 
