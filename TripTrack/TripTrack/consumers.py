@@ -236,4 +236,26 @@ class GlobalConsumer(AsyncWebsocketConsumer):
             print(f"❌ Error getting transactions: {e}")
             return []
     
+
+    # TripTrack/consumers.py
+    @database_sync_to_async
+    def get_user_data(self):
+        """Получение полных данных пользователя"""
+        if not self.user:
+            return {}
+        
+        return {
+            'id': self.user.id,
+            'username': self.user.username,
+            'email': self.user.email,
+            'first_name': self.user.first_name,
+            'full_name': getattr(self.user, 'full_name', ''),
+            'mentor_login': getattr(self.user, 'mentor_login', ''),
+            'date_joined': self.user.date_joined.isoformat(),
+            'last_login': self.user.last_login.isoformat() if self.user.last_login else None,
+            'is_active': self.user.is_active,
+            'referral_code': getattr(self.user, 'referral_code', ''),
+            'balance_amount': str(getattr(self.user, 'balance_amount', '0.00')),
+            'balance_currency': getattr(self.user, 'balance_currency', 'USD'),
+        }
  

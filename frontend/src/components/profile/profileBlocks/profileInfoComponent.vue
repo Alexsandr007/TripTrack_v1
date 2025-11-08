@@ -2,51 +2,78 @@
   <div class="profile-block profile-info">
     <h3>Основная информация</h3>
     
-    <div class="info-grid">
-      <div class="info-item">
-        <label>Логин</label>
-        <div class="info-value">{{ userInfo.login }}</div>
-      </div>
-      
-      <div class="info-item">
-        <label>Почта</label>
-        <div class="info-value">{{ userInfo.email }}</div>
-      </div>
-      
-      <div class="info-item">
-        <label>Логин ментора</label>
-        <div class="info-value">{{ userInfo.mentorLogin || 'Не назначен' }}</div>
-      </div>
-      
-      <div class="info-item">
-        <label>Дата регистрации</label>
-        <div class="info-value">{{ userInfo.registrationDate }}</div>
-      </div>
+    
+    <!-- Загрузка -->
+    <div v-if="loading" class="loading">
+      <div class="loading-spinner"></div>
+      <p>Загрузка данных...</p>
     </div>
     
-    <button class="edit-btn" @click="editInfo">Редактировать</button>
+    <div v-else>
+      <div class="info-grid">
+        <div class="info-item">
+          <label>Логин</label>
+          <div class="info-value">{{ userInfo.username || 'Не указан' }}</div>
+        </div>
+        
+        <div class="info-item">
+          <label>Почта</label>
+          <div class="info-value">{{ userInfo.email || 'Не указана' }}</div>
+        </div>
+        
+        <div class="info-item">
+          <label>Полное имя</label>
+          <div class="info-value">{{ userInfo.full_name || userInfo.first_name || 'Не указано' }}</div>
+        </div>
+        
+        <div class="info-item">
+          <label>Логин ментора</label>
+          <div class="info-value">{{ userInfo.mentor_login || 'Не назначен' }}</div>
+        </div>
+        
+        <div class="info-item">
+          <label>Дата регистрации</label>
+          <div class="info-value">{{ formattedRegistrationDate }}</div>
+        </div>
+        
+        <div class="info-item">
+          <label>Реферальный код</label>
+          <div class="info-value">{{ userInfo.referral_code || 'Не сгенерирован' }}</div>
+        </div>
+      </div>
+      
+      <button class="edit-btn" @click="editInfo">Редактировать</button>
+    </div>
   </div>
 </template>
 
 <script>
-import { defineComponent, reactive } from 'vue';
+import { defineComponent } from 'vue';
+import { useUserProfile } from '@/composables/useUserProfile';
 
 export default defineComponent({
   name: 'ProfileInfo',
   setup() {
-    const userInfo = reactive({
-      login: 'JohnDoe',
-      email: 'john@example.com',
-      mentorLogin: 'SuperMentor',
-      registrationDate: '15.01.2024'
-    });
+    const { 
+      userProfile: userInfo, 
+      formattedRegistrationDate, 
+      loading, 
+      error, 
+      connected, 
+      loadUserData 
+    } = useUserProfile();
 
     const editInfo = () => {
-      console.log('Edit profile info');
+      console.log('Редактирование профиля');
     };
 
     return {
       userInfo,
+      formattedRegistrationDate,
+      loading,
+      error,
+      connected,
+      loadUserData,
       editInfo
     };
   }
@@ -54,6 +81,20 @@ export default defineComponent({
 </script>
 
 <style scoped>
+.loading {
+  text-align: center;
+  padding: 20px;
+}
+
+.loading-spinner {
+  border: 3px solid #f3f3f3;
+  border-top: 3px solid #007bff;
+  border-radius: 50%;
+  width: 30px;
+  height: 30px;
+  animation: spin 1s linear infinite;
+  margin: 0 auto 10px;
+}
 .profile-info h3 {
   color: white;
   margin-bottom: 20px;
