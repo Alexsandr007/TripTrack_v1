@@ -34,9 +34,9 @@
           <span v-if="lastUpdate" class="last-update">
             Обновлено: {{ formatTime(lastUpdate) }}
           </span>
-          <button @click="loadBalanceData" class="refresh-btn" :disabled="loading">
+          <!-- <button @click="loadBalanceData" class="refresh-btn" :disabled="loading">
             🔄
-          </button>
+          </button> -->
         </div>
       </div>
       
@@ -48,9 +48,9 @@
       <div class="transaction-history">
         <div class="transaction-header">
           <h4>Последние операции</h4>
-          <button @click="loadBalanceData" class="refresh-btn small" :disabled="loading">
+          <!-- <button @click="loadBalanceData" class="refresh-btn small" :disabled="loading">
             🔄
-          </button>
+          </button> -->
         </div>
         
         <!-- Индикатор загрузки новых данных -->

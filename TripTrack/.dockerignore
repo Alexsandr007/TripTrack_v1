@@ -1,0 +1,14 @@
+.git
+.gitignore
+README.md
+.env
+*.log
+__pycache__
+*.pyc
+*.pyo
+*.pyd
+.Python
+venv
+.venv
+frontend/
+node_modules/

@@ -1,21 +1,15 @@
-// vite.config.js
+// frontend/vite.config.js
 import { defineConfig } from 'vite'
 import vue from '@vitejs/plugin-vue'
 
 export default defineConfig({
   plugins: [vue()],
   server: {
-    port: 8080,
-    proxy: {
-      '/api': {
-        target: 'http://localhost:8000',
-        changeOrigin: true,
-      },
-      '/ws': {
-        target: 'ws://localhost:8000',
-        ws: true,
-        changeOrigin: true,
-      }
-    }
+    host: '0.0.0.0',
+    port: 3000,
+    // Убираем proxy так как nginx будет обрабатывать запросы
+  },
+  build: {
+    outDir: 'dist'
   }
 })

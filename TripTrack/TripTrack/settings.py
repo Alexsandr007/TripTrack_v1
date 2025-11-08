@@ -25,6 +25,9 @@ SECRET_KEY = 'django-insecure-+1k*f*pd(aa1rn0p96=_2kqwgvnnfcmb2o)k*ii7p5$lh4*1-a
 
 # SECURITY WARNING: don't run with debug turned on in production!
 DEBUG = True
+# Настройки для production
+DEBUG = os.getenv('DEBUG', 'False').lower() == 'true'
+
 
 
 AUTH_USER_MODEL = 'users.CustomUser'
@@ -56,19 +59,32 @@ MIDDLEWARE = [
     'django.middleware.clickjacking.XFrameOptionsMiddleware',
 ]
 
-ALLOWED_HOSTS = ['localhost', '127.0.0.1', '0.0.0.0']
+ALLOWED_HOSTS = ['localhost', '127.0.0.1', 'backend', 'frontend']
+
+
+
+# CORS_ALLOWED_ORIGINS = [
+#     "http://localhost:8080",
+#     "http://127.0.0.1:8080",
+#     "http://0.0.0.0:8080",
+# ]
+
+
+# # Для WebSocket
+# CSRF_TRUSTED_ORIGINS = [
+#     'http://localhost:8080',
+#     'http://127.0.0.1:8080', 
+# ]
 
 CORS_ALLOWED_ORIGINS = [
     "http://localhost:8080",
+    "http://frontend:80",
     "http://127.0.0.1:8080",
-    "http://0.0.0.0:8080",
 ]
 
-
-# Для WebSocket
 CSRF_TRUSTED_ORIGINS = [
-    'http://localhost:8080',
-    'http://127.0.0.1:8080', 
+    "http://localhost:8080",
+    "http://frontend:80",
 ]
 
 
@@ -98,12 +114,28 @@ WSGI_APPLICATION = 'TripTrack.wsgi.application'
 # Database
 # https://docs.djangoproject.com/en/4.1/ref/settings/#databases
 
+# DATABASES = {
+#     'default': {
+#         'ENGINE': 'django.db.backends.sqlite3',
+#         'NAME': BASE_DIR / 'db.sqlite3',
+#     }
+# }
+
+# База данных для Docker
 DATABASES = {
     'default': {
-        'ENGINE': 'django.db.backends.sqlite3',
-        'NAME': BASE_DIR / 'db.sqlite3',
+        'ENGINE': 'django.db.backends.postgresql',
+        'NAME': os.getenv('POSTGRES_DB', 'triptrack'),
+        'USER': os.getenv('POSTGRES_USER', 'triptrack_user'),
+        'PASSWORD': os.getenv('POSTGRES_PASSWORD', 'triptrack_password'),
+        'HOST': os.getenv('POSTGRES_HOST', 'postgres'),  # ← Имя сервиса из docker-compose
+        'PORT': os.getenv('POSTGRES_PORT', '5432'),
     }
 }
+
+
+
+
 
 
 # Password validation
@@ -142,18 +174,28 @@ CORS_ALLOW_CREDENTIALS = True
 
 ASGI_APPLICATION = 'TripTrack.asgi.application'
 
-# settings.py
+# # settings.py
+# CHANNEL_LAYERS = {
+#     "default": {
+#         "BACKEND": "channels_redis.core.RedisChannelLayer",
+#         "CONFIG": {
+#             "hosts": [("127.0.0.1", 6379)],
+#             "capacity": 1500,
+#             "expiry": 10,
+#         },
+#     },
+# }
+
+
+# Redis для Channels
 CHANNEL_LAYERS = {
     "default": {
         "BACKEND": "channels_redis.core.RedisChannelLayer",
         "CONFIG": {
-            "hosts": [("127.0.0.1", 6379)],
-            "capacity": 1500,
-            "expiry": 10,
+            "hosts": [(os.getenv('REDIS_HOST', 'redis'), 6379)],  # ← Имя сервиса из docker-compose
         },
     },
 }
-
 
 # Internationalization
 # https://docs.djangoproject.com/en/4.1/topics/i18n/

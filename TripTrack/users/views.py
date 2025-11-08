@@ -30,15 +30,15 @@ class CustomUserRegistrationAPIView(View):
             errors = {}
             
             # Проверка логина (без учета регистра)
-            login = data.get('login', '').strip()
-            if login:
-                login_lower = login.lower()
-                print(f"Проверка уникальности логина: {login} (нижний регистр: {login_lower})")
+            username = data.get('login', '').strip()
+            if username:
+                login_lower = username.lower()
+                print(f"Проверка уникальности логина: {username} (нижний регистр: {login_lower})")
                 
                 if CustomUser.objects.filter(username__iexact=login_lower).exists():
                     existing_user = CustomUser.objects.filter(username__iexact=login_lower).first()
-                    print(f"Логин {login} уже существует (регистр не учитывается). Существующий: {existing_user.username}")
-                    errors['login'] = [f'Пользователь с логином "{login}" уже существует (регистр не учитывается)']
+                    print(f"Логин {username} уже существует (регистр не учитывается). Существующий: {existing_user.username}")
+                    errors['login'] = [f'Пользователь с логином "{username}" уже существует (регистр не учитывается)']
             
             # Проверка email (без учета регистра)
             email = data.get('email', '').strip()
