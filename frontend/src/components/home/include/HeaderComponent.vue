@@ -99,17 +99,14 @@ export default {
       router.push('/profile')
     }
 
-    const goToFindTour = () => {
-      // Пока что редирект на домашнюю страницу
-      // Позже можно изменить на /find-tour
-      router.push('/')
-    }
+  const goToFindTour = () => {
+    router.push('/find-tour')
+  }
 
-    const goToMyTours = () => {
-      // Пока что редирект на профиль
-      // Позже можно изменить на /my-tours
-      router.push('/profile')
-    }
+  const goToMyTours = () => {
+    router.push('/my-tours')
+  }
+
 
     const handleLogout = async () => {
       try {

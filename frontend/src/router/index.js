@@ -4,6 +4,8 @@ import RegisterComponent from '../components/home/auth/RegisterComponent.vue'
 import Login from '../components/home/auth/LoginComponent.vue'
 import Recovery from '../components/home/auth/RecoveryComponent.vue'
 import Profile from '../components/profile/profileComponent.vue'
+import FindTourPage from '@/components/tours/FindTourPage.vue'
+import MyToursPage from '@/components/tours/MyToursPage.vue'
 import TestComponent from '@/components/TestComponent.vue'
 import { useAuth } from '@/composables/useAuth'
 
@@ -16,6 +18,18 @@ const routes = [
     path: '/profile', 
     name: 'Profile', 
     component: Profile,
+    meta: { requiresAuth: true }
+  },
+  { 
+    path: '/find-tour', 
+    name: 'FindTour', 
+    component: FindTourPage,
+    meta: { requiresAuth: true }
+  },
+  { 
+    path: '/my-tours', 
+    name: 'MyTours', 
+    component: MyToursPage,
     meta: { requiresAuth: true }
   },
   { path: '/test-api', name: 'TestAPI', component: TestComponent }
@@ -31,7 +45,7 @@ router.beforeEach(async (to, from, next) => {
   const { isAuthenticated, verifyAuth } = useAuth()
   
   // Проверяем авторизацию при необходимости
-  if (to.meta.requiresAuth && !isAuthenticated.value) {
+  if (to.meta.requiresAuth) {
     const isValid = await verifyAuth()
     if (!isValid) {
       next({
