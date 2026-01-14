@@ -2,7 +2,7 @@
   <div class="profile-block settings-block">
     <h3>Настройки</h3>
     
-    <div class="settings-list">
+    <!-- <div class="settings-list">
       <div class="setting-item">
         <div class="setting-info">
           <span class="setting-name">Уведомления</span>
@@ -36,11 +36,11 @@
         </label>
       </div>
     </div>
-    
+     -->
     <div class="danger-zone">
       <h4>Опасная зона</h4>
       
-      <!-- Кнопка выхода -->
+
       <button 
         class="danger-btn" 
         @click="logout" 
@@ -50,7 +50,7 @@
         <span v-else>Выйти из аккаунта</span>
       </button>
       
-      <!-- Модальное окно подтверждения выхода -->
+
       <div v-if="showLogoutConfirm" class="confirm-modal-overlay">
         <div class="confirm-modal">
           <h3>Подтверждение выхода</h3>
@@ -62,7 +62,7 @@
         </div>
       </div>
       
-      <button class="danger-btn delete" @click="deleteAccount">Удалить аккаунт</button>
+      <!-- <button class="danger-btn delete" @click="deleteAccount">Удалить аккаунт</button> -->
     </div>
   </div>
 </template>

@@ -1,52 +1,51 @@
 <template>
   <div>
-    <h2>Тест связи Vue-Django</h2>
-    <button @click="testGetRequest">Тест GET запроса</button>
-    <button @click="testPostRequest">Тест POST запроса</button>
-    <div v-if="response">
-      <h3>Ответ от Django:</h3>
-      <pre>{{ response }}</pre>
-    </div>
+    <h1>Тест API</h1>
+    <button @click="testApi">Тест API</button>
+    <button @click="testAuth">Тест авторизации</button>
+    <div v-if="message">{{ message }}</div>
+    <div v-if="error" style="color: red">{{ error }}</div>
   </div>
 </template>
 
 <script>
+import { ref } from 'vue'
+import { useAxios } from '@/composables/useAxios'
+
 export default {
-  data() {
-    return {
-      response: null
+  name: 'TestComponent',
+  setup() {
+    const { api } = useAxios()
+    const message = ref('')
+    const error = ref('')
+
+    const testApi = async () => {
+      try {
+        const response = await api.get('/test/')
+        message.value = 'API работает: ' + JSON.stringify(response.data)
+        error.value = ''
+      } catch (err) {
+        error.value = 'Ошибка API: ' + err.message
+        message.value = ''
+      }
     }
-  },
-  methods: {
-    async testGetRequest() {
+
+    const testAuth = async () => {
       try {
-        // Указываем полный URL до Django сервера
-        const response = await fetch('http://127.0.0.1:8000/api/test/');
-        const data = await response.json();
-        this.response = data;
-      } catch (error) {
-        this.response = { error: error.message };
+        const response = await api.get('/auth/verify/')
+        message.value = 'Авторизация работает: ' + JSON.stringify(response.data)
+        error.value = ''
+      } catch (err) {
+        error.value = 'Ошибка авторизации: ' + err.message
+        message.value = ''
       }
-    },
-    
-    async testPostRequest() {
-      try {
-        const response = await fetch('http://127.0.0.1:8000/api/test/', {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify({
-            message: 'Hello from Vue!',
-            user: 'test_user',
-            timestamp: new Date().toISOString()
-          })
-        });
-        const data = await response.json();
-        this.response = data;
-      } catch (error) {
-        this.response = { error: error.message };
-      }
+    }
+
+    return {
+      message,
+      error,
+      testApi,
+      testAuth
     }
   }
 }

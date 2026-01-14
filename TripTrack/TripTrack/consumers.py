@@ -238,11 +238,21 @@ class GlobalConsumer(AsyncWebsocketConsumer):
     
 
     # TripTrack/consumers.py
+# TripTrack/consumers.py
     @database_sync_to_async
     def get_user_data(self):
         """Получение полных данных пользователя"""
         if not self.user:
             return {}
+        
+        # Получаем URL аватара если он есть
+        avatar_url = None
+        if self.user.avatar:
+            avatar_url = self.user.avatar.url
+            # Если это относительный путь, делаем абсолютный URL
+            if avatar_url.startswith('/'):
+                from django.conf import settings
+                avatar_url = f"http://localhost:8000{avatar_url}"
         
         return {
             'id': self.user.id,
@@ -257,5 +267,15 @@ class GlobalConsumer(AsyncWebsocketConsumer):
             'referral_code': getattr(self.user, 'referral_code', ''),
             'balance_amount': str(getattr(self.user, 'balance_amount', '0.00')),
             'balance_currency': getattr(self.user, 'balance_currency', 'USD'),
+            'avatar': avatar_url,  # ✅ Теперь это будет правильный URL или None
         }
  
+ 
+    # TripTrack/consumers.py
+    async def avatar_updated(self, event):
+        """Обработчик обновления аватара"""
+        print(f"🖼️ Received avatar update: {event['avatar_url']}")
+        await self.send(text_data=json.dumps({
+            'type': 'avatar_updated',
+            'avatar_url': event['avatar_url']
+        }))

@@ -83,9 +83,6 @@
             <small v-if="isMentorAutoFilled" class="auto-fill-notice">
               ✅ Ментор автоматически определен из реферальной ссылки
             </small>
-            <small v-else class="field-hint">
-              Укажите логин пользователя, который будет вашим ментором и реферером
-            </small>
           </div>
           
           <!-- Показываем ошибки валидации -->

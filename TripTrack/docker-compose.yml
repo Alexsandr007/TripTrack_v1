@@ -43,6 +43,8 @@ services:
       - CORS_ALLOWED_ORIGINS=http://frontend:80,http://localhost:8080
     volumes:
       - .:/app
+      - ./media:/app/media  # Важно: монтируем папку media
+      - ./staticfiles:/app/staticfiles  # И статические файлы
     ports:
       - "8000:8000"
     depends_on:
@@ -64,6 +66,8 @@ services:
       - "8080:80"
     depends_on:
       - backend
+    environment:
+      - VUE_APP_API_URL=http://localhost:8000/api
 
 volumes:
   postgres_data:

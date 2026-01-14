@@ -1022,3 +1022,227 @@ class GetMentorByReferralCodeView(View):
                 'success': False,
                 'error': str(e)
             }, status=500)
+
+
+# users/views.py
+import os
+from django.views import View
+from django.utils.decorators import method_decorator
+from django.views.decorators.csrf import csrf_exempt
+from django.http import JsonResponse
+from django.contrib.auth.models import User
+from rest_framework.authtoken.models import Token
+
+@method_decorator(csrf_exempt, name='dispatch')
+class UpdateAvatarAPIView(View):
+    """
+    API View для обновления аватара пользователя
+    """
+    def post(self, request):
+        try:
+            print("=== ОБНОВЛЕНИЕ АВАТАРА ===")
+            
+            # Получаем токен из заголовков
+            auth_header = request.headers.get('Authorization', '')
+            if not auth_header.startswith('Token '):
+                return JsonResponse({
+                    'success': False,
+                    'error': 'Требуется авторизация'
+                }, status=401)
+            
+            token = auth_header[6:]
+            token_obj = Token.objects.get(key=token)
+            user = token_obj.user
+            
+            # Проверяем наличие файла
+            if 'avatar' not in request.FILES:
+                return JsonResponse({
+                    'success': False,
+                    'error': 'Файл аватара не предоставлен'
+                }, status=400)
+            
+            avatar_file = request.FILES['avatar']
+            
+            # Валидация файла
+            if avatar_file.size > 5 * 1024 * 1024:  # 5MB
+                return JsonResponse({
+                    'success': False,
+                    'error': 'Файл слишком большой. Максимальный размер: 5MB'
+                }, status=400)
+            
+            if not avatar_file.content_type.startswith('image/'):
+                return JsonResponse({
+                    'success': False,
+                    'error': 'Файл должен быть изображением'
+                }, status=400)
+            
+            # Сохраняем аватар
+            user.avatar = avatar_file
+            user.save()
+            
+            # ДИАГНОСТИКА
+            print(f"📁 Абсолютный путь: {user.avatar.path}")
+            print(f"🌐 URL: {user.avatar.url}")
+            print(f"✅ Файл существует: {os.path.exists(user.avatar.path)}")
+            
+            # Получаем URL аватара
+            avatar_url = user.avatar.url
+            
+            print(f"✅ Аватар обновлен для пользователя {user.username}")
+            
+            # Отправляем WebSocket уведомление
+            try:
+                from .websocket_utils import send_avatar_update
+                send_avatar_update(user.id, avatar_url)
+            except Exception as ws_error:
+                print(f"⚠️ WebSocket ошибка: {ws_error}")
+            
+            return JsonResponse({
+                'success': True,
+                'message': 'Аватар успешно обновлен',
+                'avatar_url': avatar_url  # Относительный путь
+            })
+            
+        except Token.DoesNotExist:
+            return JsonResponse({
+                'success': False,
+                'error': 'Невалидный токен'
+            }, status=401)
+        except Exception as e:
+            print("❌ Ошибка при обновлении аватара:", str(e))
+            import traceback
+            traceback.print_exc()
+            return JsonResponse({
+                'success': False,
+                'error': f'Ошибка сервера: {str(e)}'
+            }, status=500)
+
+    def options(self, request, *args, **kwargs):
+        """Обработка CORS preflight"""
+        response = JsonResponse({"status": "ok"})
+        response["Access-Control-Allow-Origin"] = "*"
+        response["Access-Control-Allow-Methods"] = "POST, OPTIONS"
+        response["Access-Control-Allow-Headers"] = "Content-Type, Authorization"
+        return response
+    
+
+
+# users/views.py
+@method_decorator(csrf_exempt, name='dispatch')
+class SaveTelegramAPIView(View):
+    """
+    API View для сохранения Telegram ссылки
+    """
+    def post(self, request):
+        try:
+            print("=== СОХРАНЕНИЕ TELEGRAM ===")
+            
+            # Получаем токен из заголовков
+            auth_header = request.headers.get('Authorization', '')
+            if not auth_header.startswith('Token '):
+                return JsonResponse({
+                    'success': False,
+                    'error': 'Требуется авторизация'
+                }, status=401)
+            
+            token = auth_header[6:]
+            token_obj = Token.objects.get(key=token)
+            user = token_obj.user
+            
+            # Проверяем данные
+            data = json.loads(request.body)
+            telegram_link = data.get('telegram_link', '').strip()
+            
+            if not telegram_link:
+                return JsonResponse({
+                    'success': False,
+                    'error': 'Ссылка на Telegram обязательна'
+                }, status=400)
+            
+            # Проверяем формат ссылки
+            import re
+            telegram_regex = re.compile(r'^https?://t\.me/[a-zA-Z0-9_]{5,32}$')
+            if not telegram_regex.match(telegram_link):
+                return JsonResponse({
+                    'success': False,
+                    'error': 'Неверный формат ссылки Telegram'
+                }, status=400)
+            
+            # Проверяем, не подключен ли уже Telegram
+            if user.telegram_link:
+                return JsonResponse({
+                    'success': False,
+                    'error': 'Telegram уже подключен. Для изменения обратитесь в поддержку.'
+                }, status=400)
+            
+            # Сохраняем ссылку
+            user.telegram_link = telegram_link
+            user.save()
+            
+            print(f"✅ Telegram сохранен для пользователя {user.username}: {telegram_link}")
+            
+            return JsonResponse({
+                'success': True,
+                'message': 'Telegram успешно подключен',
+                'telegram_link': telegram_link
+            })
+            
+        except Token.DoesNotExist:
+            return JsonResponse({
+                'success': False,
+                'error': 'Невалидный токен'
+            }, status=401)
+        except Exception as e:
+            print("Ошибка при сохранении Telegram:", str(e))
+            import traceback
+            traceback.print_exc()
+            return JsonResponse({
+                'success': False,
+                'error': f'Ошибка сервера: {str(e)}'
+            }, status=500)
+
+@method_decorator(csrf_exempt, name='dispatch')
+class RemoveTelegramAPIView(View):
+    """
+    API View для отключения Telegram
+    """
+    def post(self, request):
+        try:
+            print("=== ОТКЛЮЧЕНИЕ TELEGRAM ===")
+            
+            # Получаем токен из заголовков
+            auth_header = request.headers.get('Authorization', '')
+            if not auth_header.startswith('Token '):
+                return JsonResponse({
+                    'success': False,
+                    'error': 'Требуется авторизация'
+                }, status=401)
+            
+            token = auth_header[6:]
+            token_obj = Token.objects.get(key=token)
+            user = token_obj.user
+            
+            # Отключаем Telegram
+            user.telegram_link = None
+            user.save()
+            
+            print(f"✅ Telegram отключен для пользователя {user.username}")
+            
+            return JsonResponse({
+                'success': True,
+                'message': 'Telegram успешно отключен'
+            })
+            
+        except Token.DoesNotExist:
+            return JsonResponse({
+                'success': False,
+                'error': 'Невалидный токен'
+            }, status=401)
+        except Exception as e:
+            print("Ошибка при отключении Telegram:", str(e))
+            import traceback
+            traceback.print_exc()
+            return JsonResponse({
+                'success': False,
+                'error': f'Ошибка сервера: {str(e)}'
+            }, status=500)

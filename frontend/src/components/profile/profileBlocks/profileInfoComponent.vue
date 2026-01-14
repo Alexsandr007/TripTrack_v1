@@ -42,7 +42,6 @@
         </div>
       </div>
       
-      <button class="edit-btn" @click="editInfo">Редактировать</button>
     </div>
   </div>
 </template>

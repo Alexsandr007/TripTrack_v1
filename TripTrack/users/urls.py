@@ -19,4 +19,8 @@ urlpatterns = [
     path('referral-stats/', views.ReferralStatsAPIView.as_view(), name='referral-stats'),
     path('referral-link/', views.ReferralLinkAPIView.as_view(), name='referral-link'),
     path('get-mentor-by-ref/', views.GetMentorByReferralCodeView.as_view(), name='get-mentor-by-ref'),
+    path('update-avatar/', views.UpdateAvatarAPIView.as_view(), name='update-avatar'),
+
+    path('save-telegram/', views.SaveTelegramAPIView.as_view(), name='save_telegram'),
+    path('remove-telegram/', views.RemoveTelegramAPIView.as_view(), name='remove_telegram'),
 ]

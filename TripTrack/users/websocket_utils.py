@@ -75,3 +75,23 @@ def send_referral_update(user_id, referral_data):
         print(f"📊 WebSocket: Отправлено обновление рефералов для user_{user_id}: {update_data}")
     except Exception as e:
         print(f"❌ Ошибка отправки WebSocket рефералов: {e}")
+
+
+# users/websocket_utils.py
+def send_avatar_update(user_id, avatar_url):
+    """
+    Отправляет обновление аватара через WebSocket
+    """
+    try:
+        channel_layer = get_channel_layer()
+        
+        async_to_sync(channel_layer.group_send)(
+            f"user_{user_id}",
+            {
+                'type': 'avatar_updated',
+                'avatar_url': avatar_url
+            }
+        )
+        print(f"🖼️ WebSocket: Отправлено обновление аватара для user_{user_id}")
+    except Exception as e:
+        print(f"❌ Ошибка отправки WebSocket аватара: {e}")

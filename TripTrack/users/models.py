@@ -63,6 +63,13 @@ class CustomUserManager(BaseUserManager):
 class CustomUser(AbstractUser):
     mentor_login = models.CharField(max_length=100, blank=True)
     full_name = models.CharField(max_length=255, blank=True)
+    avatar = models.ImageField(
+        upload_to='avatars/',
+        null=True,
+        blank=True,
+        default=None
+    )
+    telegram_link = models.URLField(max_length=200, blank=True, null=True, verbose_name='Telegram ссылка')
     
     # Поля баланса (добавляем прямо в модель пользователя)
     balance_amount = models.DecimalField(

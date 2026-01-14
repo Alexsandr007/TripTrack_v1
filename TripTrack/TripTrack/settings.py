@@ -14,7 +14,7 @@ from pathlib import Path
 import os
 
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
-BASE_DIR = Path(__file__).resolve().parent.parent
+BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
 
 # Quick-start development settings - unsuitable for production
@@ -172,6 +172,27 @@ REST_FRAMEWORK = {
 CORS_ALLOW_ALL_ORIGINS = True
 CORS_ALLOW_CREDENTIALS = True
 
+CORS_ALLOW_METHODS = [
+    'DELETE',
+    'GET',
+    'OPTIONS',
+    'PATCH',
+    'POST',
+    'PUT',
+]
+
+CORS_ALLOW_HEADERS = [
+    'accept',
+    'accept-encoding',
+    'authorization',
+    'content-type',
+    'dnt',
+    'origin',
+    'user-agent',
+    'x-csrftoken',
+    'x-requested-with',
+]
+
 ASGI_APPLICATION = 'TripTrack.asgi.application'
 
 # # settings.py
@@ -214,11 +235,27 @@ USE_TZ = True
 # https://docs.djangoproject.com/en/4.1/howto/static-files/
 
 
+
+# Медиа файлы
+MEDIA_URL = '/media/'
+MEDIA_ROOT = os.path.join(BASE_DIR, 'media')
+
+# Статические файлы
 STATIC_URL = '/static/'
+STATIC_ROOT = os.path.join(BASE_DIR, 'staticfiles')
+
+# Уберите проблемную директорию из STATICFILES_DIRS
 STATICFILES_DIRS = [
-    os.path.join(BASE_DIR, '../frontend/dist'),  # Путь к dist/ из frontend/
+    # Уберите эту строку если её нет или она вызывает ошибку:
+    # os.path.join(BASE_DIR, '../frontend/dist'),
 ]
-STATIC_ROOT = os.path.join(BASE_DIR, 'staticfiles')  # Для production
+
+# Для продакшена в Docker
+if os.environ.get('DOCKER_CONTAINER'):
+    DEBUG = False
+    # Настройки для обслуживания файлов через Nginx или WhiteNoise
+else:
+    DEBUG = True
 
 # Default primary key field type
 # https://docs.djangoproject.com/en/4.1/ref/settings/#default-auto-field

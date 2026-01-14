@@ -6,10 +6,10 @@
     </h3>
     
     <!-- Статус соединения -->
-    <div v-if="!connected" class="connection-warning">
+    <!-- <div v-if="!connected" class="connection-warning">
       <p>Нет соединения с сервером. Данные могут быть неактуальны.</p>
       <button @click="loadBalanceData" class="retry-btn">Переподключиться</button>
-    </div>
+    </div> -->
     
     <!-- Загрузка -->
     <div v-if="loading && transactions.length === 0" class="loading">
