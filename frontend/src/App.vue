@@ -6,41 +6,30 @@
       :is-curtain-closed="isCurtainClosed"
       :show-curtain="showCurtain"
     />
-      <Header />
+    
+    <!-- Header Component -->
+    <Header />
+    
     <!-- Router View с блокировкой -->
     <div class="router-container">
-
       <router-view v-slot="{ Component }">
         <transition name="fade" mode="out-in">
           <component :is="Component" :key="$route.path" />
         </transition>
       </router-view>
-
     </div>         
   </div>
 </template>
 
 <script>
-import { provide } from 'vue'
-import { useNavigation } from '@/assets/js/utils/navigation.js'
 import Preloader from '@/components/Preloader.vue'
-import Header from '@/components/home/include/HeaderComponent.vue';
+import Header from '@/components/home/include/HeaderComponent.vue'
 
 export default {
   name: 'App',
   components: {
     Header,
     Preloader
-  },
-  setup() {
-    const navigation = useNavigation()
-    
-    // Предоставляем навигацию всем дочерним компонентам
-    provide('navigation', navigation)
-    
-    return {
-      navigation
-    }
   },
   data() {
     return {
@@ -112,15 +101,16 @@ export default {
 
 <style>
 #app {
-    min-height: 100vh;
-    display: flex;
-    flex-direction: column;
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
 }
 
 .main-content {
-    flex: 1;
-    padding-bottom: 60px; /* Высота футера */
+  flex: 1;
+  padding-bottom: 60px; /* Высота футера */
 }
+
 .router-container {
   position: relative;
   z-index: 1;
